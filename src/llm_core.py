@@ -1449,6 +1449,26 @@ def _supports_thinking(model: str) -> bool:
     m = model.lower()
     return any(p in m for p in _THINKING_MODEL_PATTERNS)
 
+# Below this many output tokens a thinking model has no room to reason and
+# still answer, so reasoning is switched off outright for the call.
+_OLLAMA_MIN_THINKING_BUDGET = 1024
+
+def _apply_ollama_thinking_suppression(payload: dict, url: str, model: str, max_tokens) -> None:
+    """Suppress thinking for qwen3/gemma4 etc. on Ollama's OpenAI-compat /v1.
+
+    Ollama's /v1 surface silently ignores ``"think": false`` for some models
+    (qwen3.5 on Ollama 0.33.x), so small-budget helper calls (titles, intent
+    classification, email triage) spend the whole budget reasoning and come
+    back with empty content. ``reasoning_effort: "none"`` is honoured there, so
+    send it whenever the budget is too small to think in. Unbounded chat and
+    agent turns are left alone.
+    """
+    if not (_is_ollama_openai_compat_url(url) and _supports_thinking(model)):
+        return
+    payload["think"] = False
+    if max_tokens and 0 < max_tokens < _OLLAMA_MIN_THINKING_BUDGET:
+        payload["reasoning_effort"] = "none"
+
 def _normalize_mistral_content(content):
     """Mistral returns content as a structured array when reasoning is on:
         [{"type": "thinking", "thinking": [{"type": "text", "text": "..."}], "closed": true},
@@ -2393,8 +2413,7 @@ async def llm_call_async(
             tok_key = "max_completion_tokens" if _uses_max_completion_tokens(model) else "max_tokens"
             payload[tok_key] = max_tokens
         # Suppress thinking for qwen3/gemma4 on Ollama /v1 — same as stream_llm.
-        if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
-            payload["think"] = False
+        _apply_ollama_thinking_suppression(payload, url, model, max_tokens)
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
         _apply_local_cache_affinity(payload, url, session_id)
@@ -2654,8 +2673,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         # For Ollama's OpenAI-compat /v1 endpoint with thinking models (qwen3,
         # gemma4, etc.), suppress thinking so tool calls aren't swallowed inside
         # <think> blocks. Ollama /v1 accepts "think": false as a top-level param.
-        if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
-            payload["think"] = False
+        _apply_ollama_thinking_suppression(payload, url, model, max_tokens)
         _apply_local_cache_affinity(payload, url, session_id)
         _apply_local_generation_stability(payload, target_url, model)
         _scrub_openai_chat_tool_reasoning(payload, target_url, model)
