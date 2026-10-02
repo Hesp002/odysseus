@@ -3693,7 +3693,9 @@ async def stream_agent_loop(
                 [(endpoint_url, model, headers)] + list(fallbacks or []),
                 direct_messages,
                 temperature=temperature,
-                max_tokens=min(max_tokens or 128, 128),
+                # Room for thinking models to reason before the short reply;
+                # at 128 a qwen3.5 reply was all reasoning and no content.
+                max_tokens=min(max_tokens or 2048, 2048),
                 prompt_type=None,
                 tools=None,
                 timeout=int(get_setting("agent_stream_timeout_seconds", 300) or 300),
