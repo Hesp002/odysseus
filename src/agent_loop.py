@@ -58,6 +58,7 @@ from src.context_compactor import (
 )
 from src.settings import get_setting
 from src.prompt_security import untrusted_context_message
+from src.action_intents import classify_tool_intent
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -24945,6 +24946,12 @@ async def stream_agent_loop(
     _qwen_memory_delete_marker = _parse_qwen_explicit_memory_delete(_last_user) or ""
     _qwen_memory_delete_id = None
     _qwen_memory_delete_done = False
+    # Explicit "remember that..." / "forget that..." turn. Small local models
+    # often reply "I've saved that" without emitting manage_memory, so
+    # nothing is stored; the supervisor below nudges them to make the call.
+    _memory_request = classify_tool_intent(_last_user).category == "memory"
+    _memory_tool_called = False
+    _memory_nudged = False
 
     # "I said I would, then didn't" detector. The pattern that breaks debug
     # loops on weak models (deepseek-v4-flash mid-2026): the model writes
@@ -30550,6 +30557,33 @@ async def stream_agent_loop(
                     # never re-verify an unchanged state in a loop.
                     _effectful_used = False
                     continue
+            # ── Memory-request supervisor ────────────────────────────
+            # The user explicitly asked to remember/forget something, the
+            # model ended the turn without calling manage_memory, and it
+            # likely claimed it did ("I've noted that Ace is your dog").
+            # Nudge once; if it still doesn't call the tool, let the turn end.
+            if (
+                _memory_request
+                and not _memory_tool_called
+                and not _memory_nudged
+                and not guide_only
+                and (not _relevant_tools or "manage_memory" in _relevant_tools)
+            ):
+                _memory_nudged = True
+                logger.info(f"[agent] memory-request nudge on round {round_num}: manage_memory not called")
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "The user asked you to remember (or forget) something, but you "
+                        "ended the turn without calling manage_memory, so NOTHING was "
+                        "saved. Replying that you noted it does not store it. Call "
+                        "manage_memory NOW (action add for remember, delete for "
+                        "forget) with the fact written as a short third-person "
+                        "statement about the user, then confirm in one sentence."
+                    ),
+                })
+                yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
+                continue
             # ── Intent-without-action supervisor ─────────────────────
             # Catch "Let me tail the output" / "I'll check the logs" /
             # "Let me investigate" patterns where the model announces an
@@ -35135,6 +35169,8 @@ async def stream_agent_loop(
                         if isinstance(_calendar_snapshot_result, dict) and isinstance(_calendar_snapshot_result.get("events"), list):
                             _calendar_snapshot_event["events"] = _calendar_snapshot_result.get("events")
                         tool_events.append(_calendar_snapshot_event)
+            if block.tool_type == "manage_memory":
+                _memory_tool_called = True
             if (
                 block.tool_type in _VERIFIER_EFFECTFUL_TOOLS
                 and not (
