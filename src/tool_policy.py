@@ -234,6 +234,7 @@ def build_effective_tool_policy(
     *,
     disabled_tools: Optional[Iterable[str]] = None,
     last_user_message: object = "",
+    disable_mcp: bool = False,
 ) -> ToolPolicy:
     """Compose the effective policy for one agent turn.
 
@@ -265,4 +266,5 @@ def build_effective_tool_policy(
         disabled_tools=frozenset(disabled),
         hidden_tools=frozenset(hidden),
         reasons=MappingProxyType(dict(reasons)),
+        disable_mcp=disable_mcp,
     )
