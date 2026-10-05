@@ -250,3 +250,26 @@ def test_persona_with_a_single_memory_still_recalls_it(tmp_path):
     hits = processor._hybrid_retrieve("You know my name, don't you?", marcus, k=5, idf_corpus=pool)
     assert [m["text"] for m in hits] == ["My name is Kyle Hespe"]
     assert processor._hybrid_retrieve("What is my dog called?", marcus, k=5, idf_corpus=pool) == []
+
+
+def test_persona_chat_preprocessing_skips_link_fetching(monkeypatch):
+    import src.chat_handler as ch
+
+    seen = []
+    monkeypatch.setattr(ch, "extract_urls", lambda text: seen.append(text) or [])
+    monkeypatch.setattr(personas, "session_persona_id", lambda sid: "p1" if sid == "persona-chat" else None)
+    handler = ch.ChatHandler.__new__(ch.ChatHandler)
+
+    def run(sid):
+        from types import SimpleNamespace
+        try:
+            asyncio.run(handler.preprocess_message(
+                "look at https://example.com", [], SimpleNamespace(id=sid, history=[]),
+            ))
+        except Exception:
+            pass  # only the URL step matters here
+
+    run("persona-chat")
+    assert seen == []
+    run("odysseus-chat")
+    assert seen == ["look at https://example.com"]
