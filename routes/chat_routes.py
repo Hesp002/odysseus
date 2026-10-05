@@ -4692,6 +4692,15 @@ def setup_chat_routes(
                                     full_response = _render_state.content
                                     _stream_set(session, partial=full_response)
                                     yield chunk
+                                elif data.get("type") == "retract_round_text":
+                                    # The agent loop withdrew a round's text (a
+                                    # premature "I'll remember that" before the
+                                    # memory nudge). Keep it out of the saved reply.
+                                    _retract = data.get("text") or ""
+                                    if _retract and _render_state.content.endswith(_retract):
+                                        _render_state.content = _render_state.content[: -len(_retract)] + (data.get("keep") or "")
+                                        full_response = _render_state.content
+                                        _stream_set(session, partial=full_response)
                                 elif data.get("type") == "web_sources":
                                     web_sources = data.get("data", [])
                                     yield chunk
