@@ -39,6 +39,7 @@ class MemoryAddRequest(BaseModel):
     category: str = Field(default="fact", description="Memory category")
     source: str = Field(default="user", description="Memory source")
     session_id: Optional[str] = Field(default=None, description="Associated session ID")
+    persona: Optional[str] = Field(default=None, description="Persona id (None = Odysseus)")
 
     @field_validator('category')
     @classmethod

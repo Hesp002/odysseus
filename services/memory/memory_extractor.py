@@ -388,6 +388,9 @@ async def extract_and_store(
 
         # Get owner from session
         _owner = getattr(session, 'owner', None)
+        # Facts learned in a persona's chat belong to that persona only.
+        from src.personas import filter_for_persona, memory_persona, session_persona_id, tag_entry
+        _persona = session_persona_id(getattr(session, 'id', None))
 
         # Strict load: this is a read-modify-write. Degrading to [] here would
         # save only the newly extracted facts and drop the entire store.
@@ -432,12 +435,17 @@ async def extract_and_store(
                     # silently dropped. Mirror the owner predicate used by the
                     # text dedup below; cross-tenant/stale matches fall through.
                     _match = next((e for e in existing if e.get("id") == existing_id), None)
-                    if _match is not None and (_match.get("owner") == _owner or _match.get("owner") is None):
+                    if (
+                        _match is not None
+                        and (_match.get("owner") == _owner or _match.get("owner") is None)
+                        and memory_persona(_match) == _persona
+                    ):
                         logger.debug(f"Memory dedup (vector): '{fact_text[:50]}' matches {existing_id}")
                         continue
 
             # Text dedup fallback: exact match + fuzzy similarity
             user_existing = [e for e in existing if e.get("owner") == _owner or e.get("owner") is None] if _owner else existing
+            user_existing = filter_for_persona(user_existing, _persona)
             if memory_manager.find_duplicates(fact_text, user_existing):
                 continue
             # Fuzzy text similarity check (catches rephrased duplicates when vector index is unavailable)
@@ -445,7 +453,10 @@ async def extract_and_store(
                 logger.debug(f"Memory dedup (fuzzy): '{fact_text[:50]}' too similar to existing")
                 continue
 
-            entry = memory_manager.add_entry(fact_text, source="auto", category=category, owner=_owner)
+            entry = tag_entry(
+                memory_manager.add_entry(fact_text, source="auto", category=category, owner=_owner),
+                _persona,
+            )
             # Auto-pin identity facts (name, job, location) — core context
             if category == "identity":
                 entry["pinned"] = True
@@ -483,7 +494,8 @@ async def extract_and_store(
                 _extractions_since_audit = 0
                 logger.info("Audit threshold reached, running memory audit")
                 await audit_memories(
-                    memory_manager, memory_vector, endpoint_url, model, headers, owner=_owner
+                    memory_manager, memory_vector, endpoint_url, model, headers,
+                    owner=_owner, persona=_persona,
                 )
         else:
             logger.info("Auto memory extraction ran: 0 added")
@@ -499,8 +511,12 @@ async def audit_memories(
     model: str,
     headers: Optional[dict] = None,
     owner: Optional[str] = None,
+    persona: Optional[str] = None,
 ):
     """Send all memories to the LLM for deduplication and consolidation.
+
+    Only one persona's memories are audited at a time (default: Odysseus,
+    the untagged ones), so personas never get merged into each other.
 
     - Merges near-duplicate entries
     - Rewrites vague entries to be concise
@@ -513,7 +529,9 @@ async def audit_memories(
     try:
         from src.llm_core import llm_call_async
 
-        existing = memory_manager.load(owner=owner)
+        from src.personas import filter_for_persona
+        existing = filter_for_persona(memory_manager.load(owner=owner), persona)
+        _tidy_key = f"{owner or ''}|persona:{persona}" if persona else owner
         if not existing:
             logger.info("Memory audit: nothing to audit")
             return {"before": 0, "after": 0}
@@ -527,7 +545,7 @@ async def audit_memories(
         # The fingerprint includes id+text+category; any add/edit/delete
         # invalidates it and the audit runs normally.
         current_fp = _fingerprint_entries(existing)
-        last_state = _load_tidy_state(memory_manager).get(owner or "") or {}
+        last_state = _load_tidy_state(memory_manager).get(_tidy_key or "") or {}
         if last_state.get("fingerprint") == current_fp:
             logger.info("Memory audit: state unchanged since last tidy — skipping LLM")
             return {
@@ -633,7 +651,22 @@ async def audit_memories(
             return {"before": before_count, "after": before_count, "error": "unsafe_removal"}
 
         # Merge audited entries back with other users' entries
-        if owner:
+        if persona:
+            # Keep everything outside this persona's audited slice untouched.
+            try:
+                all_entries = memory_manager.load_all_for_update()
+            except MemoryStoreUnreadable as e:
+                logger.error("Aborting memory audit save, store unreadable: %s", e)
+                return {
+                    "before": before_count,
+                    "after": before_count,
+                    "error": "store_unreadable",
+                }
+            audited_scope = {e["id"] for e in existing}
+            saved_entries = final_entries + [
+                e for e in all_entries if e.get("id") not in audited_scope
+            ]
+        elif owner:
             # Strict load: the merge below reconstructs the whole file. If this
             # degraded to [] we would save only this owner's audited slice and
             # destroy every other tenant's memories.
@@ -647,14 +680,20 @@ async def audit_memories(
                     "error": "store_unreadable",
                 }
             audited_ids = {e["id"] for e in final_entries}
-            other_entries = [e for e in all_entries if e.get("owner") != owner and (e.get("owner") is not None)]
+            other_entries = [
+                e for e in all_entries
+                if (e.get("owner") != owner and (e.get("owner") is not None)) or e.get("persona")
+            ]
             # Also keep legacy entries that weren't part of this audit
             for e in all_entries:
                 if e.get("owner") is None and e["id"] not in audited_ids and e["id"] not in {o["id"] for o in other_entries}:
                     other_entries.append(e)
             saved_entries = final_entries + other_entries
         else:
-            saved_entries = final_entries
+            # Persona memories were excluded from this audit; keep them.
+            saved_entries = final_entries + [
+                e for e in memory_manager.load_all_for_update() if e.get("persona")
+            ]
         memory_manager.save(saved_entries)
         logger.info(
             f"Memory audit complete: {before_count} -> {after_count} entries "
@@ -669,7 +708,7 @@ async def audit_memories(
 
         # Persist the post-tidy fingerprint so the next call short-circuits
         # if nothing has changed in the meantime.
-        _save_tidy_state(memory_manager, owner, _fingerprint_entries(final_entries))
+        _save_tidy_state(memory_manager, _tidy_key, _fingerprint_entries(final_entries))
 
         return {"before": before_count, "after": after_count}
 

@@ -315,6 +315,11 @@ class ChatProcessor:
         self._last_used_memories = []  # track what was injected
         if use_memory:
             mem_entries = self.memory_manager.load(owner=owner)
+            # Each persona sees only its own memories (Odysseus: untagged).
+            from src.personas import filter_for_persona, session_persona_id
+            mem_entries = filter_for_persona(
+                mem_entries, session_persona_id(getattr(session, "id", None))
+            )
 
             pinned = [m for m in mem_entries if m.get("pinned")]
             extended = [m for m in mem_entries if not m.get("pinned")]

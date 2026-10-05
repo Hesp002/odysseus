@@ -377,3 +377,26 @@ def test_chat_stream_honors_retract_round_text():
     segment = ast.get_source_segment(source, chat_stream_func)
     assert '"retract_round_text"' in segment
     assert "full_response.endswith(_retract)" in segment
+
+
+def test_persona_chats_are_chat_plus_memory_only():
+    """A persona chat (src/personas.py) gets no web, research, documents,
+    plan mode, workspace or tools; only a memory request escalates, and then
+    manage_memory is the only tool, with MCP dropped."""
+    source = _CHAT_ROUTES.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    chat_stream_func = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "chat_stream"
+    )
+    segment = ast.get_source_segment(source, chat_stream_func)
+    early = segment[segment.index("_persona_chat = bool("):segment.index("if plan_mode:\n            chat_mode = \"agent\"")]
+    for flag in ('use_web = "false"', 'allow_web_search = "false"', 'use_research = "false"',
+                 'use_rag = "false"', "plan_mode = False", 'chat_mode = "chat"', "workspace = None"):
+        assert flag in early, flag
+    assert "if _persona_chat:\n            do_research = False" in segment
+    assert "allow_tool_preprocessing = False" in segment
+    late = segment[segment.index("if _persona_chat:\n            # Whatever escalated above"):]
+    assert 'known_tool_names() - {"manage_memory"}' in late
+    assert late.index('known_tool_names() - {"manage_memory"}') < late.index("build_effective_tool_policy(")
+    assert "disable_mcp=_memory_only_turn" in late

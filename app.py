@@ -722,6 +722,8 @@ app.include_router(setup_search_routes(config))
 # Presets
 from routes.preset_routes import setup_preset_routes
 app.include_router(setup_preset_routes(preset_manager))
+from routes.persona_routes import setup_persona_routes
+app.include_router(setup_persona_routes(session_manager, memory_manager, memory_vector))
 
 # Diagnostics
 from routes.diagnostics_routes import setup_diagnostics_routes

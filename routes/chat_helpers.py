@@ -326,6 +326,29 @@ def extract_preset(chat_handler, preset_id) -> PresetInfo:
     )
 
 
+def apply_session_persona(preset: PresetInfo, session_id: Optional[str]) -> PresetInfo:
+    """Give a chat created with a persona that persona's prompt and name.
+
+    The persona replaces any character preset's identity; a non-character
+    preset's instructions (e.g. Code Analyze) still apply after it. The name
+    flows through character_name to the reply label and saved metadata.
+    """
+    from src.personas import persona_system_prompt, session_persona
+
+    persona = session_persona(session_id)
+    if not persona:
+        return preset
+    prompt = persona_system_prompt(persona)
+    if preset.system_prompt and not preset.character_name:
+        prompt = f"{prompt}\n\n{preset.system_prompt}"
+    return PresetInfo(
+        temperature=preset.temperature,
+        max_tokens=preset.max_tokens,
+        system_prompt=prompt,
+        character_name=persona["name"],
+    )
+
+
 async def preprocess(
     chat_handler, message, att_ids, sess,
     auto_opened_docs: Optional[list] = None,
@@ -634,6 +657,7 @@ async def build_chat_context(
     """
     # Preset
     preset = extract_preset(chat_handler, preset_id)
+    preset = apply_session_persona(preset, session_id)
 
     # Preprocess message (CoT, YouTube, VL images, build content). The
     # auto_opened_docs collector captures any docs created server-side

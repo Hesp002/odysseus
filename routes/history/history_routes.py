@@ -623,6 +623,11 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
                 rag=False,
                 owner=getattr(source, 'owner', None),
             )
+            # A fork keeps talking to the same persona.
+            from src.personas import session_persona_id, set_session_persona
+            _fork_persona = session_persona_id(session_id)
+            if _fork_persona:
+                set_session_persona(new_id, _fork_persona)
 
             # Copy messages up to keep_count
             msgs_to_copy = source.history[:keep_count]

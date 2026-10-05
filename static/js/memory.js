@@ -12,6 +12,11 @@ var escapeHtml = uiModule.esc;
 
 let memories = [];
 let activeCategory = 'all';
+// Persona scope for the Brain list: '' = Odysseus (untagged memories, the
+// default), 'all' = every persona, otherwise a persona id (src/personas.py).
+let activePersona = '';
+const _personaOf = (m) => m.persona || '';
+const _inPersonaScope = (m) => activePersona === 'all' || _personaOf(m) === activePersona;
 let sortOrder = 'newest';
 let selectMode = false;
 let selectedIds = new Set();
@@ -162,7 +167,9 @@ function buildCategoryChips() {
   // an "all" chip with nothing to filter.
   if (!memories.length) { container.innerHTML = ''; return; }
 
-  const cats = new Set(memories.map(m => m.category || 'fact'));
+  _buildPersonaChips(container);
+
+  const cats = new Set(memories.filter(_inPersonaScope).map(m => m.category || 'fact'));
   const sorted = ['all', ...Array.from(cats).sort()];
 
   container.innerHTML = '';
@@ -179,6 +186,45 @@ function buildCategoryChips() {
       updateMemoryCount();
     });
     container.appendChild(btn);
+  });
+}
+
+// Persona chips (Odysseus / each persona with memories / all) in their own
+// row above the category chips. Hidden when only Odysseus has memories.
+function _buildPersonaChips(categoryContainer) {
+  let row = document.getElementById('memory-persona-filters');
+  if (!row) {
+    row = document.createElement('div');
+    row.id = 'memory-persona-filters';
+    row.className = categoryContainer.className;
+    row.style.marginBottom = '4px';
+    categoryContainer.parentNode.insertBefore(row, categoryContainer);
+  }
+  const names = new Map();
+  memories.forEach(m => { if (m.persona) names.set(m.persona, m.persona_name || 'Persona'); });
+  if (!names.size) {
+    row.innerHTML = '';
+    row.style.display = 'none';
+    activePersona = '';
+    return;
+  }
+  if (activePersona && activePersona !== 'all' && !names.has(activePersona)) activePersona = '';
+  row.style.display = '';
+  row.innerHTML = '';
+  const chips = [['', 'Odysseus'], ...Array.from(names.entries()).sort((a, b) => a[1].localeCompare(b[1])), ['all', 'all personas']];
+  chips.forEach(([id, label]) => {
+    const btn = document.createElement('button');
+    btn.className = 'memory-cat-chip' + (id === activePersona ? ' active' : '');
+    btn.textContent = label;
+    btn.title = id === 'all' ? 'Memories of every persona' : `Memories ${label} keeps`;
+    btn.addEventListener('click', () => {
+      activePersona = id;
+      activeCategory = 'all';
+      buildCategoryChips();
+      renderMemoryList();
+      updateMemoryCount();
+    });
+    row.appendChild(btn);
   });
 }
 
@@ -657,6 +703,7 @@ function getFilteredMemories() {
   let filtered = searchTerm
     ? memories.filter(m => m.text && m.text.toLowerCase().includes(searchTerm))
     : [...memories];
+  filtered = filtered.filter(_inPersonaScope);
 
   if (activeCategory !== 'all') {
     filtered = filtered.filter(m => (m.category || 'fact') === activeCategory);
@@ -1087,7 +1134,7 @@ export function updateMemoryCount() {
   const searchInput = document.getElementById('memory-search');
   const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
 
-  let visible = memories;
+  let visible = memories.filter(_inPersonaScope);
   const scopeTotal = visible.length;
   if (searchTerm) {
     visible = visible.filter(m => m.text && m.text.toLowerCase().includes(searchTerm));
@@ -1122,6 +1169,8 @@ export async function addNewMemory() {
       body: JSON.stringify({
         text: text,
         category: category,
+        // Added while a persona's memories are shown → that persona's memory.
+        persona: (activePersona && activePersona !== 'all') ? activePersona : null,
       })
     });
 
