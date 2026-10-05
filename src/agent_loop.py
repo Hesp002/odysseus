@@ -5506,6 +5506,19 @@ async def stream_agent_loop(
             ):
                 _memory_nudged = True
                 logger.info(f"[agent] memory-request nudge on round {round_num}: manage_memory not called")
+                # Drop this round's premature "I'll remember that" from the
+                # saved turn (history reload and the model's own context on
+                # later turns); it was a claim made before anything was saved.
+                # Inline <think> blocks stay so they still render on reload.
+                _kept_think = "".join(
+                    re.findall(r"<think>.*?</think>", round_response, flags=re.DOTALL | re.IGNORECASE)
+                )
+                if round_response and full_response.endswith(round_response):
+                    full_response = full_response[: -len(round_response)] + _kept_think
+                if round_texts:
+                    round_texts[-1] = _kept_think.strip()
+                if round_response:
+                    yield f'data: {json.dumps({"type": "retract_round_text", "text": round_response, "keep": _kept_think})}\n\n'
                 messages.append({
                     "role": "system",
                     "content": (
