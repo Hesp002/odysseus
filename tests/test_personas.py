@@ -284,3 +284,69 @@ def test_string_false_use_web_does_not_trigger_chat_web_search():
     assert _tool_toggle_enabled(None) is False
     assert _tool_toggle_enabled("true") is True
     assert _tool_toggle_enabled(True) is True
+
+
+def test_tidy_route_audits_one_persona_scope_at_a_time(monkeypatch, tmp_path):
+    from unittest.mock import MagicMock
+
+    import routes.memory.memory_routes as memory_routes
+
+    manager = MemoryManager(str(tmp_path))
+    manager.save([
+        manager.add_entry("My name is Kyle Hespe", owner="kyle"),
+        personas.tag_entry(manager.add_entry("My name is Kyle Hespe", owner="kyle"), "p-marcus"),
+        personas.tag_entry(manager.add_entry("Kyle likes jazz", owner="kyle"), "p-frasier"),
+    ])
+    monkeypatch.setattr(memory_routes, "get_current_user", lambda request: "kyle")
+    monkeypatch.setattr(memory_routes, "resolve_task_endpoint", lambda *a, **k: ("http://x/v1", "m", None))
+    monkeypatch.setattr(personas, "get_persona", lambda pid, owner=None: {"id": pid} if pid else None)
+    calls = []
+
+    async def fake_audit(*args, **kwargs):
+        calls.append(kwargs.get("persona"))
+        return {"before": 1, "after": 1}
+    monkeypatch.setattr(memory_routes, "audit_memories", fake_audit)
+
+    router = memory_routes.setup_memory_routes(manager, MagicMock())
+    audit = next(r.endpoint for r in router.routes if r.path == "/api/memory/audit")
+    run = lambda persona: asyncio.run(audit(request=None, session=None, persona=persona))
+
+    run("")
+    assert calls == [None]
+    calls.clear()
+    run("p-marcus")
+    assert calls == ["p-marcus"]
+    calls.clear()
+    result = run("__all__")
+    assert calls == [None, "p-frasier", "p-marcus"]
+    assert result["before"] == 3
+
+
+def test_memory_audit_of_a_persona_leaves_odysseus_alone(tmp_path, monkeypatch):
+    import src.llm_core as llm_core
+    from services.memory import memory_extractor
+
+    manager = MemoryManager(str(tmp_path))
+    odysseus = manager.add_entry("My name is Kyle Hespe", owner="kyle")
+    marcus = [
+        personas.tag_entry(manager.add_entry("My name is Kyle Hespe", owner="kyle"), "p-marcus"),
+        personas.tag_entry(manager.add_entry("Kyle is called Kyle Hespe", owner="kyle"), "p-marcus"),
+    ]
+    manager.save([odysseus] + marcus)
+    seen = {}
+
+    async def fake_llm(*args, **kwargs):
+        seen["prompt"] = json.dumps(kwargs.get("messages") or args)
+        return json.dumps([{"id": marcus[0]["id"], "text": marcus[0]["text"]}])  # merge Marcus's two
+    monkeypatch.setattr(llm_core, "llm_call_async", fake_llm)
+
+    asyncio.run(memory_extractor.audit_memories(
+        manager, None, "http://x/v1", "m", owner="kyle", persona="p-marcus",
+    ))
+
+    assert odysseus["id"] not in seen["prompt"]
+    after = manager.load(owner="kyle")
+    assert sorted((m.get("persona") or "", m["text"]) for m in after) == [
+        ("", "My name is Kyle Hespe"),
+        ("p-marcus", "My name is Kyle Hespe"),
+    ]

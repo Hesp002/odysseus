@@ -305,7 +305,7 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             return {"suggestions": [item["text"] for item in fallback]}
 
     @router.post("/audit")
-    async def api_audit_memories(request: Request, session: str = Form(None)):
+    async def api_audit_memories(request: Request, session: str = Form(None), persona: str = Form(None)):
         """Deduplicate and consolidate memories via LLM.
 
         Uses task/utility/default settings through the shared resolver, with
@@ -332,14 +332,43 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         if not endpoint_url or not model:
             raise HTTPException(400, "No default model configured — set one in Settings")
 
-        result = await audit_memories(
-            memory_manager,
-            memory_vector,
-            endpoint_url,
-            model,
-            headers,
-            owner=user,
-        )
+        # One persona scope per audit (src/personas.py): '' = Odysseus, an id
+        # = that persona, "__all__" = each scope in turn. Never merged across.
+        persona = persona.strip() if isinstance(persona, str) else ""
+        if persona == "__all__":
+            scopes = [None] + sorted({
+                m["persona"] for m in memory_manager.load(owner=user) if m.get("persona")
+            })
+        else:
+            if persona:
+                from src.personas import get_persona
+                if not get_persona(persona, user):
+                    raise HTTPException(400, "Persona not found")
+            scopes = [persona or None]
+
+        result = {"before": 0, "after": 0}
+        for scope in scopes:
+            part = await audit_memories(
+                memory_manager,
+                memory_vector,
+                endpoint_url,
+                model,
+                headers,
+                owner=user,
+                # Odysseus (no scope) keeps the pre-persona call exactly.
+                **({"persona": scope} if scope else {}),
+            )
+            if "error" in part and "before" not in part:
+                result = part
+                break
+            result["before"] += part.get("before", 0)
+            result["after"] += part.get("after", part.get("before", 0))
+            if part.get("error"):
+                result["error"] = part["error"]
+            if part.get("already_tidy"):
+                result["already_tidy"] = result.get("already_tidy", True)
+            else:
+                result["already_tidy"] = False
 
         if "error" in result and "before" not in result:
             raise HTTPException(502, f"Audit failed: {result['error']}")
