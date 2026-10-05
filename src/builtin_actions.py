@@ -481,15 +481,15 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
             return (mem.get("owner") or "").strip()
 
         # Built-in housekeeping can run without an owner. In that case scan all
-        # memories, but keep every AI prompt/apply step owner-local.
-        if _owner_clean:
-            memory_groups = {
-                _owner_clean: [m for m in all_memories if _memory_owner(m) == _owner_clean]
-            }
-        else:
-            memory_groups = {}
-            for mem in all_memories:
-                memory_groups.setdefault(_memory_owner(mem), []).append(mem)
+        # memories, but keep every AI prompt/apply step owner-local. Groups are
+        # also per persona so a persona's memories are never merged into
+        # another persona's (or Odysseus's).
+        memory_groups = {}
+        for mem in all_memories:
+            if _owner_clean and _memory_owner(mem) != _owner_clean:
+                continue
+            group_key = (_memory_owner(mem), mem.get("persona") or "")
+            memory_groups.setdefault(group_key, []).append(mem)
 
         memory_groups = {group_owner: group for group_owner, group in memory_groups.items() if group}
         if not memory_groups:
@@ -683,7 +683,7 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
                 logger.warning("AI memory tidy failed; falling back to duplicate cleanup: %s", ai_err)
             return False
 
-        for group_owner, group_memories in memory_groups.items():
+        for (group_owner, _group_persona), group_memories in memory_groups.items():
             total_scanned += len(group_memories)
             deduped_group, group_removed = _dedupe_group(group_memories)
             if group_removed:

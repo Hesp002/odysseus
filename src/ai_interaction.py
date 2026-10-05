@@ -361,9 +361,14 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
 
     action = lines[0].strip().lower()
 
+    # The chat's persona owns its own memories; Odysseus chats see only the
+    # untagged ones (src/personas.py).
+    from src.personas import filter_for_persona, memory_persona, session_persona_id, tag_entry
+    _persona = session_persona_id(session_id)
+
     if action == "list":
         category_filter = lines[1].strip().lower() if len(lines) > 1 and lines[1].strip() else None
-        memories = _memory_manager.load(owner=owner)
+        memories = filter_for_persona(_memory_manager.load(owner=owner), _persona)
         if category_filter:
             memories = [m for m in memories if m.get("category", "").lower() == category_filter]
         if not memories:
@@ -387,7 +392,10 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
         if not text:
             return {"error": "Memory text cannot be empty"}
 
-        entry = _memory_manager.add_entry(text, source="ai_agent", category=category, owner=owner)
+        entry = tag_entry(
+            _memory_manager.add_entry(text, source="ai_agent", category=category, owner=owner),
+            _persona,
+        )
         # Strict load: this is a read-modify-write, and it is the path an
         # ordinary "remember that I prefer X" takes. Degrading to [] here would
         # save just this one entry over a store we only failed to read,
@@ -429,8 +437,8 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
         found = False
         for m in memories:
             if m.get("id", "").startswith(memory_id):
-                # Verify ownership
-                if owner and m.get("owner") != owner:
+                # Verify ownership (owner and persona)
+                if (owner and m.get("owner") != owner) or memory_persona(m) != _persona:
                     return {"error": f"Memory '{memory_id}' not found"}
                 m["text"] = new_text
                 m["timestamp"] = int(time.time())
@@ -464,8 +472,8 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
         delete_id = None
         for m in memories:
             if m.get("id", "").startswith(memory_id):
-                # Verify ownership
-                if owner and m.get("owner") != owner:
+                # Verify ownership (owner and persona)
+                if (owner and m.get("owner") != owner) or memory_persona(m) != _persona:
                     return {"error": f"Memory '{memory_id}' not found"}
                 full_id = m["id"]
                 delete_id = m["id"]
@@ -489,7 +497,7 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
         if len(lines) < 2:
             return {"error": "Search needs line 2: query"}
         query = lines[1].strip()
-        memories = _memory_manager.load(owner=owner)
+        memories = filter_for_persona(_memory_manager.load(owner=owner), _persona)
         query_lower = query.lower()
         exact_results = [m for m in memories if query_lower in (m.get("text", "").lower())]
 

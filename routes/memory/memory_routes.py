@@ -111,25 +111,34 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
                 text=form.get("text"),
                 category=form.get("category", "fact"),
                 source=form.get("source", "user"),
-                session_id=form.get("session_id")
+                session_id=form.get("session_id"),
+                persona=form.get("persona") or None,
             )
 
         user = _owner(request)
         text = (memory_data.text or "").strip()
         if not text:
             raise HTTPException(400, "empty memory")
-        user_mem = memory_manager.load(owner=user)
-        if memory_manager.find_duplicates(text, user_mem):
-            return {"ok": True, "count": len(user_mem), "message": "Memory already exists"}
-
+        from src.personas import filter_for_persona, get_persona, session_persona_id, tag_entry
         if memory_data.session_id:
             try:
                 session_obj = session_manager.get_session(memory_data.session_id)
             except KeyError:
                 raise HTTPException(404, "Session not found")
             _assert_session_owner(session_obj, user)
+        # Explicit persona (Brain panel), else the session's, else Odysseus.
+        persona_id = memory_data.persona or session_persona_id(memory_data.session_id)
+        if persona_id and not get_persona(persona_id, user):
+            raise HTTPException(400, "Persona not found")
 
-        new_entry = memory_manager.add_entry(text, memory_data.source, memory_data.category, owner=user)
+        user_mem = filter_for_persona(memory_manager.load(owner=user), persona_id)
+        if memory_manager.find_duplicates(text, user_mem):
+            return {"ok": True, "count": len(user_mem), "message": "Memory already exists"}
+
+        new_entry = tag_entry(
+            memory_manager.add_entry(text, memory_data.source, memory_data.category, owner=user),
+            persona_id,
+        )
         if memory_data.session_id:
             new_entry["session_id"] = memory_data.session_id
         all_mem = _load_for_update(memory_manager)
@@ -149,7 +158,17 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
     def api_get_memory(request: Request):
         """Return all memory entries with their metadata."""
         user = _owner(request)
-        return {"memory": memory_manager.load(owner=user)}
+        entries = memory_manager.load(owner=user)
+        # Label persona-scoped memories for the Brain panel (src/personas.py).
+        from src.personas import list_personas
+        names = {p["id"]: p["name"] for p in list_personas(user)}
+        out = []
+        for e in entries:
+            if e.get("persona"):
+                e = dict(e)
+                e["persona_name"] = names.get(e["persona"], "Deleted persona")
+            out.append(e)
+        return {"memory": out}
 
     @router.post("/search")
     def search_memories(request: Request, query: str = Form(...), session_id: str = Form(None), category: str = Form(None)):

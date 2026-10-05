@@ -1942,6 +1942,7 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
     // Update model picker visibility
     updateModelPicker();
     if (window.refreshChatContextHeader) window.refreshChatContextHeader('select-session');
+    if (window.personaModule && window.personaModule.syncForSession) window.personaModule.syncForSession(id);
 
     // Refresh session cost badge for the newly selected session
     if (chatRenderer.updateSessionCostUI) chatRenderer.updateSessionCostUI();
@@ -2196,6 +2197,20 @@ async function _getPreferredDefaultChat() {
   return null;
 }
 
+/** Start a new chat with a persona (null = Odysseus) on the default model. */
+export async function startPersonaChat(persona) {
+  const dc = await _getPreferredDefaultChat();
+  if (!dc) {
+    uiModule.showError('Pick a default chat model in Settings first.');
+    return;
+  }
+  createDirectChat(dc.endpoint_url, dc.model, dc.endpoint_id, {
+    source: 'manual',
+    personaId: persona && persona.id ? persona.id : null,
+    personaName: persona && persona.id ? persona.name : '',
+  });
+}
+
 export function createDirectChat(url, modelId, endpointId, opts = {}) {
   const incomingSource = opts.source || 'manual';
   if (
@@ -2219,8 +2234,14 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
     if (window._syncGroupIndicator) window._syncGroupIndicator(false);
   }
 
-  // Don't hit the API — just store the model info and prepare the UI
-  _pendingChat = { url, modelId, endpointId, source: incomingSource };
+  // Don't hit the API — just store the model info and prepare the UI.
+  // personaId/personaName: chat persona picked in the sidebar (personas.js);
+  // none means the default Odysseus.
+  _pendingChat = {
+    url, modelId, endpointId, source: incomingSource,
+    personaId: opts.personaId || null,
+    personaName: opts.personaName || '',
+  };
   _pendingMaterializePromise = null;
   _skipAutoSelect = true;
   _suppressNextSessionLoading = true;
@@ -2258,7 +2279,10 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   // Update current-meta header
   const metaEl = document.getElementById('current-meta');
   if (metaEl) {
-    metaEl.textContent = 'New Chat';
+    metaEl.textContent = _pendingChat.personaName ? `New Chat · ${_pendingChat.personaName}` : 'New Chat';
+  }
+  if (window.personaModule && window.personaModule.syncActive) {
+    window.personaModule.syncActive(_pendingChat.personaId);
   }
 
   // Enable input
@@ -2280,7 +2304,7 @@ export async function materializePendingSession() {
 
     const incognitoChk = document.getElementById('incognito-toggle');
     const isIncognito = incognitoChk && incognitoChk.checked;
-    const base = (pending.modelId || 'model').split('/').pop();
+    const base = pending.personaName || (pending.modelId || 'model').split('/').pop();
     const name = isIncognito ? 'Nobody' : `${base} ${new Date().toLocaleTimeString()}`;
 
     const fd = new FormData();
@@ -2292,6 +2316,9 @@ export async function materializePendingSession() {
     }
     if (pending.endpointId) {
       fd.append('endpoint_id', pending.endpointId);
+    }
+    if (pending.personaId && !isIncognito) {
+      fd.append('crew_member_id', pending.personaId);
     }
 
     let res;
@@ -3681,7 +3708,8 @@ const sessionModule = {
   setSessionHasDocs,
   getSortMode,
   setSortMode,
-  deleteCurrentSessionFromTopMenu
+  deleteCurrentSessionFromTopMenu,
+  startPersonaChat
 };
 
 export { updateModelPicker };

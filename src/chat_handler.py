@@ -333,9 +333,11 @@ class ChatHandler:
             message
         )
         if is_memory_cmd and memory_text:
+            from src.personas import filter_for_persona, session_persona_id, tag_entry
+            persona_id = session_persona_id(getattr(session, "id", None))
             mem = self.memory_manager.load()
-            if not self.memory_manager.find_duplicates(memory_text, mem):
-                new_entry = self.memory_manager.add_entry(memory_text)
+            if not self.memory_manager.find_duplicates(memory_text, filter_for_persona(mem, persona_id)):
+                new_entry = tag_entry(self.memory_manager.add_entry(memory_text), persona_id)
                 mem.append(new_entry)
                 self.memory_manager.save(mem)
 

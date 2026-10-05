@@ -1017,6 +1017,20 @@ def setup_chat_routes(
         workspace, workspace_rejected = _resolve_request_workspace(
             request, form_data.get("workspace")
         )
+        # Persona chats (src/personas.py) are the persona prompt plus that
+        # persona's own memory, nothing else: web, research, documents, plan
+        # mode, workspace and every agent tool stay with the default Odysseus.
+        # The one action left is saving/forgetting its memories (see below).
+        from src.personas import session_persona as _session_persona
+        _persona_chat = bool(isinstance(session, str) and session and _session_persona(session))
+        if _persona_chat:
+            use_web = "false"
+            allow_web_search = "false"
+            use_research = "false"
+            use_rag = "false"
+            plan_mode = False
+            chat_mode = "chat"
+            workspace = None
         # Plan mode is a modifier on agent mode — it only makes sense with tools.
         if plan_mode:
             chat_mode = "agent"
@@ -1320,7 +1334,9 @@ def setup_chat_routes(
             not tool_approval_continuation
             and str(use_research).lower() == "true"
         )
-        if not do_research and not tool_approval_continuation:
+        if _persona_chat:
+            do_research = False
+        elif not do_research and not tool_approval_continuation:
             if get_session_mode(session) == 'research_pending':
                 do_research = True
                 logger.info(f"Session {session} in research_pending — auto-triggering research")
@@ -1348,6 +1364,11 @@ def setup_chat_routes(
             last_user_message=message,
         )
         allow_tool_preprocessing = not pre_context_tool_policy.block_all_tool_calls
+        if _persona_chat:
+            # Decide before the context is built (agent_mode shapes it): plain
+            # chat unless this is a memory request; no link/video fetching.
+            chat_mode = "agent" if (_tool_intent and _tool_intent.category == "memory") else "chat"
+            allow_tool_preprocessing = False
         foreground_policy = resolve_foreground_model_policy(
             owner=owner,
             allowed_models=_allowed_models_for_request(request),
@@ -1614,6 +1635,18 @@ def setup_chat_routes(
         _memory_only_turn = bool(
             auto_escalated and _tool_intent and _tool_intent.category == "memory"
         )
+        if _persona_chat:
+            # Whatever escalated above (web/browser follow-ups, paths, ...),
+            # a persona turn is plain chat unless it is a memory request,
+            # and then manage_memory is the only tool.
+            _memory_only_turn = bool(_tool_intent and _tool_intent.category == "memory")
+            chat_mode = "agent" if _memory_only_turn else "chat"
+            auto_escalated = _memory_only_turn
+            user_requested_agent = False
+            workspace = None
+            if _memory_only_turn:
+                from src.tool_policy import known_tool_names
+                disabled_tools.update(known_tool_names() - {"manage_memory"})
         tool_policy = build_effective_tool_policy(
             disabled_tools=disabled_tools,
             last_user_message=message,

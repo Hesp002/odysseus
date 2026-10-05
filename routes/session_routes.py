@@ -366,9 +366,16 @@ def setup_session_routes(
         skip_validation: str = Form(None),
         api_key: str = Form(""),
         endpoint_id: str = Form(""),
+        crew_member_id: str = Form(""),
     ):
         skip_val = str(skip_validation).lower() == "true"
         user = effective_user(request)
+        # Persona for the new chat (src/personas.py); empty means Odysseus.
+        persona_id = (crew_member_id or "").strip() or None
+        if persona_id:
+            from src.personas import get_persona
+            if not get_persona(persona_id, user):
+                raise HTTPException(400, "Persona not found")
         _reject_delegated_session_options(
             request,
             skip_validation=skip_val,
@@ -467,6 +474,9 @@ def setup_session_routes(
             rag=str(rag).lower() == "true" if rag else False,
             owner=user,
         )
+        if persona_id:
+            from src.personas import set_session_persona
+            set_session_persona(sid, persona_id)
         # Set auth headers for custom API-key endpoints
         resolved_key = request_api_key
         resolved_base = endpoint_url
