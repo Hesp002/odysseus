@@ -37,6 +37,28 @@ def test_note_todo_and_reminder_actions_promote_to_agent():
     assert message_needs_tools("set a reminder to call Pat at 4pm")
 
 
+def test_memory_save_and_forget_requests_promote_to_agent():
+    prompts = [
+        "My dog is named Ace. Remember that.",
+        "Remember that I'm allergic to cats",
+        "Please remember my anniversary is June 3",
+        "Don't forget that I work nights",
+        "Save this to your memory",
+        "Forget that I live in Fargo",
+        "Can you remember my dog's name?",
+    ]
+    for prompt in prompts:
+        intent = classify_tool_intent(prompt)
+        assert intent.needs_tools, prompt
+        assert intent.category == "memory", prompt
+
+
+def test_memory_recall_questions_stay_in_chat():
+    assert not message_needs_tools("Do you remember what my dog's name is?")
+    assert not message_needs_tools("Remember when we talked about Ceph?")
+    assert not message_needs_tools("I can't remember my password")
+
+
 def test_email_and_ui_actions_promote_to_agent():
     assert message_needs_tools("reply to that email")
     assert message_needs_tools("mark those emails as read")
