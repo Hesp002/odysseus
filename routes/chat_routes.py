@@ -1366,9 +1366,10 @@ def setup_chat_routes(
         allow_tool_preprocessing = not pre_context_tool_policy.block_all_tool_calls
         if _persona_chat:
             # Decide before the context is built (agent_mode shapes it): plain
-            # chat unless this is a memory request; no link/video fetching.
+            # chat unless this is a memory request. Link/video fetching is
+            # skipped in preprocess_message; allow_tool_preprocessing must stay
+            # on because it also gates memory injection.
             chat_mode = "agent" if (_tool_intent and _tool_intent.category == "memory") else "chat"
-            allow_tool_preprocessing = False
         foreground_policy = resolve_foreground_model_policy(
             owner=owner,
             allowed_models=_allowed_models_for_request(request),
