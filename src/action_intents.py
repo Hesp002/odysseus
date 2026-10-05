@@ -49,6 +49,19 @@ _PANEL = (
 _ROUTING_PATTERNS: tuple[tuple[str, str, Pattern[str]], ...] = tuple(
     (category, reason, re.compile(pattern, re.I))
     for category, reason, pattern in (
+        # Saving/forgetting memories. Plain chat has no tools, so without this
+        # "My dog is named Ace. Remember that." is only acknowledged, never
+        # saved. Listed first so broader patterns (e.g. "named computer task"
+        # matching "from memory") don't claim these. Recall questions like
+        # "do you remember when..." are deliberately not matched.
+        ("memory", "remember imperative request", rf"{_PLEASE}(?:remember|memorize)\b(?!\s+when\b)"),
+        ("memory", "trailing remember request", r"\b(?:remember|memorize)\s+(?:that|this|it)\s*[.!]*\s*$"),
+        ("memory", "assistant remember request", rf"(?:{_ACTION_QUESTION}|\b(?:please|i\s+(?:want|need)\s+you\s+to)\s+)(?:remember|memorize)\s+(?:that|this|it|my)\b"),
+        ("memory", "don't forget request", r"\bdon'?t\s+forget\s+(?:that|this|my)\b"),
+        ("memory", "save to memory request", r"\b(?:save|store|add|put|keep|note)\b.{0,80}\b(?:to|in|into)\s+(?:your\s+|my\s+)?memor(?:y|ies)\b"),
+        ("memory", "forget request", rf"{_PLEASE}forget\s+(?:that|this|about|my)\b"),
+        ("memory", "remove from memory request", r"\b(?:forget|delete|remove|erase)\b.{0,80}\bfrom\s+(?:your\s+|my\s+)?memor(?:y|ies)\b"),
+
         # Calendar/event creation. Covers "Can you add an entry to my
         # calendar?", imperatives like "add lunch to my calendar", and
         # follow-ups such as "you should be able to create that event now".
