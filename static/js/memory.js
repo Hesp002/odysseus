@@ -568,8 +568,13 @@ export async function tidyMemories() {
   const beforeMap = new Map(memories.map(m => [m.id, { ...m }]));
 
   try {
+    // Tidy the persona scope on screen ('' Odysseus, an id, or every
+    // persona separately); never across personas.
+    const tidyForm = new FormData();
+    tidyForm.append('persona', activePersona === 'all' ? '__all__' : (activePersona || ''));
     const res = await fetch(`${window.location.origin}/api/memory/audit`, {
       method: 'POST',
+      body: tidyForm,
     });
 
     if (!res.ok) {
@@ -819,6 +824,15 @@ export function renderMemoryList() {
     catBadge.className = 'memory-cat-badge memory-cat-' + cat;
     catBadge.textContent = cat;
     meta.appendChild(catBadge);
+
+    // In the "all personas" view, say whose memory this is.
+    if (activePersona === 'all') {
+      const personaBadge = document.createElement('span');
+      personaBadge.className = 'memory-cat-badge memory-persona-badge';
+      personaBadge.textContent = memory.persona ? (memory.persona_name || 'Persona') : 'Odysseus';
+      personaBadge.title = 'Persona this memory belongs to';
+      meta.appendChild(personaBadge);
+    }
 
     const srcSpan = document.createElement('span');
     srcSpan.className = 'memory-item-source';
