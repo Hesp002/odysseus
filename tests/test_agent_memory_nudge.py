@@ -153,3 +153,28 @@ def test_no_second_save_after_approved_manage_memory(monkeypatch):
     assert executed == ["manage_memory"]
     assert len(calls) == 1
     assert not _nudged(calls[0])
+
+
+def test_nudged_round_text_is_retracted_from_saved_reply(monkeypatch):
+    # "I'll remember Ace!" was a claim made before anything was saved; it must
+    # not persist into history (reload, or the model's context next turn).
+    # Inline <think> blocks are kept so they still render on reload.
+    _, executed, events = _run_loop(
+        monkeypatch,
+        "My dog is named Ace. Remember that.",
+        [
+            "<think>plan</think>I'll remember Ace!",
+            "```manage_memory\nadd\nThe user's dog is named Ace.\n```",
+            "Remembered: your dog is named Ace.",
+        ],
+    )
+    assert executed == ["manage_memory"]
+    retract = [e for e in events if e.get("type") == "retract_round_text"]
+    assert len(retract) == 1
+    assert retract[0]["text"] == "<think>plan</think>I'll remember Ace!"
+    assert retract[0]["keep"] == "<think>plan</think>"
+
+    metrics = next(e for e in events if e.get("type") == "metrics")["data"]
+    assert metrics["round_texts"][0] == "<think>plan</think>"
+    assert "I'll remember Ace!" not in json.dumps(metrics["round_texts"])
+    assert metrics["round_texts"][-1] == "Remembered: your dog is named Ace."

@@ -364,3 +364,16 @@ def test_memory_auto_escalation_drops_mcp():
     segment = ast.get_source_segment(source, chat_stream_func)
     assert '_tool_intent.category == "memory"' in segment
     assert classify_tool_intent("My dog is named Ace. Remember that.").category == "memory"
+
+
+def test_chat_stream_honors_retract_round_text():
+    """chat_stream must drop a retracted round's text from the saved reply."""
+    source = _CHAT_ROUTES.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    chat_stream_func = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "chat_stream"
+    )
+    segment = ast.get_source_segment(source, chat_stream_func)
+    assert '"retract_round_text"' in segment
+    assert "full_response.endswith(_retract)" in segment
