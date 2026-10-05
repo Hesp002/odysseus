@@ -31,7 +31,7 @@ def _events(chunks):
     return out
 
 
-def _run_loop(monkeypatch, user_text, round_texts, max_rounds=5):
+def _run_loop(monkeypatch, user_text, round_texts, max_rounds=5, **loop_kwargs):
     monkeypatch.setattr(al, "get_setting", lambda key, default=None: default, raising=False)
     monkeypatch.setattr(al, "get_mcp_manager", lambda: None, raising=False)
     monkeypatch.setattr(al, "estimate_tokens", lambda *a, **k: 10, raising=False)
@@ -59,6 +59,7 @@ def _run_loop(monkeypatch, user_text, round_texts, max_rounds=5):
         [{"role": "user", "content": user_text}],
         max_rounds=max_rounds,
         relevant_tools={"manage_memory"},
+        **loop_kwargs,
     )
     events = _events(_collect(gen))
     return calls, executed, events
@@ -117,3 +118,38 @@ def test_no_nudge_for_recall_question(monkeypatch):
     )
     assert len(calls) == 1
     assert executed == []
+
+
+def test_no_second_save_after_approved_manage_memory(monkeypatch):
+    # The add needed approval; the resumed run executes the approved call and
+    # the model just confirms. That must not trigger a nudge (duplicate add).
+    from src.tool_approvals import ToolApprovalStore
+    from src.tool_capabilities import capabilities_for_action
+
+    content = "add\nThe user's dog is named Ace."
+    store = ToolApprovalStore()
+    pending = store.create(
+        owner="alice",
+        session_id="session-1",
+        origin_run_id="run-1",
+        tool_name="manage_memory",
+        content=content,
+        workspace=None,
+        external_untrusted_context_seen=True,
+        capabilities=capabilities_for_action("manage_memory", content),
+    )
+    grant = store.consume(
+        pending.approval_id, decision="approve", owner="alice", session_id="session-1",
+    )
+
+    calls, executed, _ = _run_loop(
+        monkeypatch,
+        "My dog is named Ace. Remember that.",
+        ["Ace is now part of your memory."],
+        owner="alice",
+        session_id="session-1",
+        exact_approval=grant,
+    )
+    assert executed == ["manage_memory"]
+    assert len(calls) == 1
+    assert not _nudged(calls[0])
