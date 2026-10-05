@@ -423,6 +423,27 @@ def test_untrusted_context_message_arms_gate_by_default_and_can_opt_out():
     assert messages_contain_external_untrusted_context([opted_out]) is False
 
 
+def test_saved_memory_context_does_not_arm_gate():
+    from src.prompt_security import (
+        saved_memory_context_message,
+        untrusted_context_message,
+    )
+
+    memory = saved_memory_context_message(
+        "saved memory: pinned context", "- My name is Kyle"
+    )
+    assert memory["metadata"]["tool_gate_untrusted"] is False
+    assert messages_contain_external_untrusted_context([memory]) is False
+
+    context = ToolRunSecurityContext()
+    context.observe_messages([memory])
+    assert context.decision_for("manage_memory", "add\nMy dog is named Ace").allowed
+
+    # External content in the same run still arms the gate.
+    context.observe_messages([memory, untrusted_context_message("webpage", "x")])
+    assert context.external_untrusted_context_seen is True
+
+
 def test_security_context_can_rescan_late_prompt_messages():
     from src.prompt_security import untrusted_context_message
 
