@@ -137,3 +137,7 @@ def test_rail_new_chat_off_hides_new_session():
 def test_explicit_false_takes_precedence_over_default_on():
     m = _resolve({"rag-toggle-btn": True})
     assert m[RAG] is True
+
+def test_persona_section_is_default_off_and_can_be_enabled():
+    assert _resolve({})["#persona-section"] is False
+    assert _resolve({"persona-section": True})["#persona-section"] is True
