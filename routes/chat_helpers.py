@@ -326,6 +326,11 @@ def extract_preset(chat_handler, preset_id) -> PresetInfo:
     )
 
 
+def _tool_toggle_enabled(value) -> bool:
+    from src.tool_policy import tool_toggle_enabled
+    return tool_toggle_enabled(value)
+
+
 def apply_session_persona(preset: PresetInfo, session_id: Optional[str]) -> PresetInfo:
     """Give a chat created with a persona that persona's prompt and name.
 
@@ -746,7 +751,8 @@ async def build_chat_context(
     _preface_kwargs = dict(
         message=_ctx_msg,
         session=sess,
-        use_web=use_web and not skip_web,
+        # Explicit true only: a "false" string (form value) must not search.
+        use_web=_tool_toggle_enabled(use_web) and not skip_web,
         use_memory=mem_enabled,
         time_filter=time_filter,
         preset_system_prompt=preset.system_prompt,

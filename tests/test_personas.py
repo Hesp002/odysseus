@@ -273,3 +273,14 @@ def test_persona_chat_preprocessing_skips_link_fetching(monkeypatch):
     assert seen == []
     run("odysseus-chat")
     assert seen == ["look at https://example.com"]
+
+
+def test_string_false_use_web_does_not_trigger_chat_web_search():
+    # Regression: a persona chat passed use_web="false"; build_chat_context
+    # used the raw string as truthy and ran a Brave search.
+    from routes.chat_helpers import _tool_toggle_enabled
+
+    assert _tool_toggle_enabled("false") is False
+    assert _tool_toggle_enabled(None) is False
+    assert _tool_toggle_enabled("true") is True
+    assert _tool_toggle_enabled(True) is True

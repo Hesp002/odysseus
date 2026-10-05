@@ -391,7 +391,7 @@ def test_persona_chats_are_chat_plus_memory_only():
     )
     segment = ast.get_source_segment(source, chat_stream_func)
     early = segment[segment.index("_persona_chat = bool("):segment.index("if plan_mode:\n            chat_mode = \"agent\"")]
-    for flag in ('use_web = "false"', 'allow_web_search = "false"', 'use_research = "false"',
+    for flag in ('use_web = None', 'allow_web_search = "false"', 'use_research = "false"',
                  'use_rag = "false"', "plan_mode = False", 'chat_mode = "chat"', "workspace = None"):
         assert flag in early, flag
     assert "if _persona_chat:\n            do_research = False" in segment

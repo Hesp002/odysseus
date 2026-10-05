@@ -1024,7 +1024,7 @@ def setup_chat_routes(
         from src.personas import session_persona as _session_persona
         _persona_chat = bool(isinstance(session, str) and session and _session_persona(session))
         if _persona_chat:
-            use_web = "false"
+            use_web = None  # not "false": build_chat_context treated any string as on
             allow_web_search = "false"
             use_research = "false"
             use_rag = "false"
