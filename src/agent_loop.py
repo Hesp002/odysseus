@@ -24149,10 +24149,12 @@ async def stream_agent_loop(
             is_api = True
         if tool_surface in {"compact", "full"}:
             is_api = True
-        prompt_compact = (
-            tool_surface != "full"
-            and (is_api or is_native_ollama or is_ollama_compat)
-        )
+        # The compact prompt says "use native tool calls; don't write tool
+        # syntax" and lists bare tool names, which is only true when schemas
+        # are sent (is_api). Ollama without supports_tools gets no schemas, so
+        # it needs the full prompt with the fenced-block format; otherwise
+        # models invent call syntax nothing parses.
+        prompt_compact = tool_surface != "full" and is_api
         if tool_surface == "compact":
             # Retrieval text is intentionally shortened for indexing and can
             # omit the output path that defines an artifact contract. Routing
