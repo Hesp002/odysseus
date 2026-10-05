@@ -1607,9 +1607,17 @@ def setup_chat_routes(
             from src.tool_security import plan_mode_disabled_tools
             disabled_tools.update(plan_mode_disabled_tools())
 
+        # An auto-escalated "remember that..." turn only needs manage_memory.
+        # MCP tool descriptions are wrapped as untrusted context, which arms
+        # the external-context gate and forces an approval prompt for the
+        # memory write, so leave MCP out of these turns entirely.
+        _memory_only_turn = bool(
+            auto_escalated and _tool_intent and _tool_intent.category == "memory"
+        )
         tool_policy = build_effective_tool_policy(
             disabled_tools=disabled_tools,
             last_user_message=message,
+            disable_mcp=_memory_only_turn,
         )
         disabled_tools = tool_policy.all_disabled_names()
         research_blocked_by_policy = bool(
