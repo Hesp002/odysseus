@@ -236,7 +236,17 @@ function _fillModelSelect(selectEl, models, selected, keepBlank) {
     opt.textContent = String(m).split('/').pop();
     selectEl.appendChild(opt);
   });
-  if (previous && Array.from(selectEl.options).some(function(o) { return o.value === previous; })) {
+  if (previous && !Array.from(selectEl.options).some(function(o) { return o.value === previous; })) {
+    // The saved model is hidden, disabled, or gone from its endpoint. Show it
+    // anyway: falling back to the first/blank option displayed a value that
+    // isn't saved (selects only save on 'change'), so the UI claimed a
+    // default that new chats didn't actually use.
+    const stale = document.createElement('option');
+    stale.value = previous;
+    stale.textContent = String(previous).split('/').pop() + ' (unavailable)';
+    selectEl.appendChild(stale);
+  }
+  if (previous) {
     selectEl.value = previous;
   } else if (blankText !== null) {
     selectEl.value = '';
