@@ -41418,5 +41418,3 @@ body.settings-sidebar-resize-active {
 /* The persona chip row (memory.js) adds a line to the Brain toolbar; lift its
    120px cap so the category chips don't spill over the first memory. */
 #memory-modal .memory-toolbar:has(#memory-persona-filters:not(:empty)) { max-height: 160px; }
-/* Persona label on a memory in Brain's "all personas" view (memory.js). */
-.memory-cat-badge.memory-persona-badge { border-style: dashed; }
