@@ -8,7 +8,11 @@ from typing import List, Dict, Any, Optional, Tuple
 from src.chat_helpers import extract_urls
 from src.youtube_handler import is_youtube_url
 from src.search import comprehensive_web_search, fetch_webpage_content
-from src.prompt_security import UNTRUSTED_CONTEXT_POLICY, untrusted_context_message
+from src.prompt_security import (
+    UNTRUSTED_CONTEXT_POLICY,
+    saved_memory_context_message,
+    untrusted_context_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -319,7 +323,7 @@ class ChatProcessor:
             selected_pinned = self._select_pinned_memories(message, pinned)
             if selected_pinned:
                 pinned_text = "\n- ".join([m["text"] for m in selected_pinned])
-                preface.append(untrusted_context_message(
+                preface.append(saved_memory_context_message(
                     "saved memory: pinned context",
                     (
                         "Pinned memory context. Some pinned memories are only "
@@ -336,11 +340,11 @@ class ChatProcessor:
                 relevant = self._hybrid_retrieve(message, extended, k=remaining_memory_slots)
                 if relevant:
                     ext_text = "\n".join([f"- {m['text']}" for m in relevant])
-                    preface.append(untrusted_context_message(
+                    preface.append(saved_memory_context_message(
                         "saved memory: retrieved context",
                         (
-                            "Memory context. Do not reference unless the user asks "
-                            f"about these topics.\n{ext_text}"
+                            "Memory context. Use these when relevant to the "
+                            f"user's request.\n{ext_text}"
                         ),
                     ))
                     for m in relevant:

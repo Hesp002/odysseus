@@ -1583,7 +1583,8 @@ def _minimal_saved_memory_message(messages: List[Dict]) -> Optional[Dict]:
         content = re.sub(r"(?m)^\s*Source:\s*saved memory:[^\n]*\n?", "", content)
         content = content.replace("Core facts about the user:", "")
         content = re.sub(
-            r"Memory context\. Do not reference unless the user asks about these topics\.\s*",
+            r"Memory context\. (?:Do not reference unless the user asks about these "
+            r"topics|Use these when relevant to the user's request)\.\s*",
             "",
             content,
         )
