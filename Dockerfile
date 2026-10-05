@@ -78,6 +78,12 @@ COPY requirements.txt requirements-optional.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
 
+# Cherry-pick individual optional packages without INSTALL_OPTIONAL's full set,
+# e.g. EXTRA_PIP_PACKAGES="markitdown[docx,pptx,xlsx,xls]==0.1.6" for
+# Office/EPUB extraction. Separate layer so the core deps above stay cached.
+ARG EXTRA_PIP_PACKAGES=""
+RUN if [ -n "$EXTRA_PIP_PACKAGES" ]; then pip install --no-cache-dir $EXTRA_PIP_PACKAGES; fi
+
 # python-magic powers content-based MIME sniffing in src/upload_handler.py.
 # Image-only (not in requirements.txt) because it needs the libmagic1 system
 # lib installed above; see the apt note near the top of this stage.
