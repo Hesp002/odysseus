@@ -41415,3 +41415,6 @@ body.settings-sidebar-resize-active {
 .persona-editor-prompt { resize: vertical; min-height: 120px; line-height: 1.4; }
 .persona-editor-hint { margin: 8px 0 0; font-size: 0.8rem; opacity: 0.6; }
 .persona-editor-box .modal-footer { display: flex; align-items: center; gap: 8px; }
+/* The persona chip row (memory.js) adds a line to the Brain toolbar; lift its
+   120px cap so the category chips don't spill over the first memory. */
+#memory-modal .memory-toolbar:has(#memory-persona-filters:not(:empty)) { max-height: 160px; }
