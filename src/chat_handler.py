@@ -140,8 +140,11 @@ class ChatHandler:
         enhanced_message = message
         attachment_meta: List[Dict[str, Any]] = []
 
-        # Extract URLs and process YouTube transcripts
-        urls = extract_urls(enhanced_message) if allow_tool_preprocessing else []
+        # Extract URLs and process YouTube transcripts. Persona chats
+        # (src/personas.py) never fetch links: web access stays with Odysseus.
+        from src.personas import session_persona_id
+        persona_chat = bool(session_persona_id(getattr(sess, "id", None)))
+        urls = extract_urls(enhanced_message) if allow_tool_preprocessing and not persona_chat else []
         youtube_transcripts: List[str] = []
 
         has_youtube = False

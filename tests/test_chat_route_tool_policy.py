@@ -395,7 +395,11 @@ def test_persona_chats_are_chat_plus_memory_only():
                  'use_rag = "false"', "plan_mode = False", 'chat_mode = "chat"', "workspace = None"):
         assert flag in early, flag
     assert "if _persona_chat:\n            do_research = False" in segment
-    assert "allow_tool_preprocessing = False" in segment
+    # allow_tool_preprocessing also gates memory injection; a persona chat
+    # must keep it on or the persona never sees its own memories.
+    persona_ctx = segment[segment.index("if _persona_chat:\n            # Decide before the context is built"):]
+    persona_ctx = persona_ctx[:persona_ctx.index("foreground_policy =")]
+    assert "allow_tool_preprocessing = False" not in persona_ctx
     late = segment[segment.index("if _persona_chat:\n            # Whatever escalated above"):]
     assert 'known_tool_names() - {"manage_memory"}' in late
     assert late.index('known_tool_names() - {"manage_memory"}') < late.index("build_effective_tool_policy(")
