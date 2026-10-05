@@ -7,7 +7,7 @@
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'odysseus-v659-notes-reference';
+const CACHE_NAME = 'odysseus-v660-personas';
 
 // KaTeX resolves these from its own stylesheet, so caching the CSS without them
 // gives offline math fallback glyphs instead of proper typesetting.
@@ -67,6 +67,7 @@ const PRECACHE = [
   '/static/js/markdown.js',
   '/static/js/dragSort.js',
   '/static/js/sessions.js',
+  '/static/js/personas.js',
   '/static/js/memory.js',
   '/static/js/skills.js?v=20260909kebabconsistency1',
   '/static/js/skillsMetrics.js?v=20260908autonomousskills1',
