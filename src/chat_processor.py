@@ -159,11 +159,18 @@ class ChatProcessor:
             selected.append(memory)
         return selected[:self.PINNED_MEMORY_LIMIT]
 
-    def _hybrid_retrieve(self, message: str, mem_entries: list, k: int = 5) -> list:
+    def _hybrid_retrieve(
+        self, message: str, mem_entries: list, k: int = 5, idf_corpus: Optional[list] = None
+    ) -> list:
         """Retrieve memories relevant to the message.
 
         Uses BM25-style keyword scoring + optional vector similarity.
         Recency is a tiebreaker only, never the primary signal.
+
+        ``idf_corpus``: when ``mem_entries`` is a slice (one persona's
+        memories), term rarity is computed over the whole pool instead. A
+        persona with a single memory otherwise gives every shared word ~zero
+        IDF ("name" in "My name is Kyle" scored 0.048 < the 0.08 gate).
         """
         if not mem_entries or not message.strip():
             return []
@@ -178,14 +185,19 @@ class ChatProcessor:
                 return []
 
         # ── Build IDF from the memory corpus ──
-        N = len(mem_entries)
+        corpus = idf_corpus if idf_corpus and len(idf_corpus) > len(mem_entries) else mem_entries
+        N = len(corpus)
         doc_freq = Counter()  # token -> how many memories contain it
-        mem_token_cache = {}  # mem_id -> set of content tokens
-        for mem in mem_entries:
-            toks = set(_content_tokens(mem["text"]))
-            mem_token_cache[mem["id"]] = toks
+        corpus_token_lens = []
+        for mem in corpus:
+            toks = set(_content_tokens(mem.get("text", "")))
+            corpus_token_lens.append(len(toks))
             for t in toks:
                 doc_freq[t] += 1
+        mem_token_cache = {}  # mem_id -> set of content tokens (candidates)
+        for mem in mem_entries:
+            mem_token_cache[mem["id"]] = set(_content_tokens(mem["text"]))
+        avg_len = max(sum(corpus_token_lens) / max(N, 1), 1)
 
         def _bm25_score(query_toks, mem_id):
             """BM25-inspired score between query and a memory."""
@@ -194,7 +206,6 @@ class ChatProcessor:
                 return 0.0
             score = 0.0
             mem_len = len(mem_toks)
-            avg_len = max(sum(len(v) for v in mem_token_cache.values()) / N, 1)
             k1, b = 1.5, 0.75
             for qt in query_toks:
                 if qt not in mem_toks:
@@ -211,7 +222,10 @@ class ChatProcessor:
         vector_scores = {}
 
         if has_vector:
-            results = self.memory_vector.search(message, k=min(k * 3, 20))
+            # The vector index is shared; search deeper by however many
+            # memories the slice excludes so a persona's few are reachable.
+            excluded = max(len(corpus) - len(mem_entries), 0)
+            results = self.memory_vector.search(message, k=min(min(k * 3, 20) + excluded, 200))
             mem_by_id = {m["id"]: m for m in mem_entries}
             for r in results:
                 if r["memory_id"] in mem_by_id:
@@ -317,12 +331,14 @@ class ChatProcessor:
             mem_entries = self.memory_manager.load(owner=owner)
             # Each persona sees only its own memories (Odysseus: untagged).
             from src.personas import filter_for_persona, session_persona_id
+            _all_mem_entries = mem_entries
             mem_entries = filter_for_persona(
                 mem_entries, session_persona_id(getattr(session, "id", None))
             )
 
             pinned = [m for m in mem_entries if m.get("pinned")]
             extended = [m for m in mem_entries if not m.get("pinned")]
+            all_extended = [m for m in _all_mem_entries if not m.get("pinned")]
 
             _used_ids: list = []
             selected_pinned = self._select_pinned_memories(message, pinned)
@@ -342,7 +358,9 @@ class ChatProcessor:
 
             remaining_memory_slots = max(self.MEMORY_CONTEXT_LIMIT - len(self._last_used_memories), 0)
             if extended and remaining_memory_slots:
-                relevant = self._hybrid_retrieve(message, extended, k=remaining_memory_slots)
+                relevant = self._hybrid_retrieve(
+                    message, extended, k=remaining_memory_slots, idf_corpus=all_extended
+                )
                 if relevant:
                     ext_text = "\n".join([f"- {m['text']}" for m in relevant])
                     preface.append(saved_memory_context_message(

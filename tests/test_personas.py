@@ -228,3 +228,25 @@ def test_memory_audit_of_odysseus_keeps_persona_memories(tmp_path, monkeypatch):
     assert "Frasier fact" not in seen.get("prompt", "")
     texts = sorted(m["text"] for m in manager.load(owner="kyle"))
     assert texts == ["Frasier fact", "Odysseus fact 0", "Odysseus fact 1"]
+
+
+def test_persona_with_a_single_memory_still_recalls_it(tmp_path):
+    # Regression: IDF over a one-memory slice gave "name" ~zero weight, so
+    # Marcus never saw "My name is Kyle Hespe" when asked about the name.
+    from src.chat_processor import ChatProcessor
+
+    manager = MemoryManager(str(tmp_path))
+    pool = [
+        manager.add_entry("My name is Kyle Hespe, can be called Kyle", owner="kyle"),
+        manager.add_entry("Kyle Hespe's dog is named Ace.", owner="kyle"),
+        manager.add_entry("Kyle runs a three-node Proxmox cluster.", owner="kyle"),
+        personas.tag_entry(manager.add_entry("My name is Kyle Hespe", owner="kyle"), "p-marcus"),
+    ]
+    processor = ChatProcessor.__new__(ChatProcessor)
+    processor.memory_manager = manager
+    processor.memory_vector = None
+    marcus = personas.filter_for_persona(pool, "p-marcus")
+
+    hits = processor._hybrid_retrieve("You know my name, don't you?", marcus, k=5, idf_corpus=pool)
+    assert [m["text"] for m in hits] == ["My name is Kyle Hespe"]
+    assert processor._hybrid_retrieve("What is my dog called?", marcus, k=5, idf_corpus=pool) == []
