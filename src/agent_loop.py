@@ -4315,7 +4315,12 @@ async def stream_agent_loop(
             needs_admin=_needs_admin,
             relevant_tools=route_tools,
             mcp_disabled_map=_mcp_disabled_map,
-            compact=is_api or is_native_ollama or is_ollama_compat,
+            # The compact prompt says "use native tool calls; don't write tool
+            # syntax" and lists bare tool names, which is only true when
+            # schemas are sent (is_api). Ollama without supports_tools gets
+            # no schemas, so it needs the full prompt with the fenced-block
+            # format; otherwise models invent call syntax nothing parses.
+            compact=is_api,
             owner=owner,
             suppress_local_context=guide_only,
             suppress_skills=_low_signal_turn,
