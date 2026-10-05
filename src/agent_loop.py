@@ -4761,6 +4761,10 @@ async def stream_agent_loop(
             approved_tool_event["doc_id"] = approved_result["doc_id"]
             approved_tool_event["doc_title"] = approved_result.get("title", "")
         tool_events.append(approved_tool_event)
+        if approved.tool_name == "manage_memory":
+            # Resumed after the user approved it: the memory request is done,
+            # so the memory-request supervisor must not nudge for a second add.
+            _memory_tool_called = True
         if approved.tool_name in _VERIFIER_EFFECTFUL_TOOLS:
             _effectful_used = True
         formatted_approved_result = format_tool_result(desc, approved_result)
