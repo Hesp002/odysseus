@@ -16,6 +16,7 @@ export const UI_VIS_MAP = {
   'sidebar-search':      '#sidebar-search-btn',
   'sessions-section':   '#sessions-section',
   'email-section':       '#email-section, #rail-email',
+  'persona-section':     '#persona-section',
   'tools-section':       '#tools-section',
   // Per-tool entries pair the sidebar button with its rail launcher.
   'tool-calendar':       '#tool-calendar-btn, #rail-calendar',
@@ -46,7 +47,8 @@ export const UI_VIS_MAP = {
 };
 
 // Keys hidden by default on first run (no localStorage yet).
-export const UI_VIS_DEFAULT_OFF = new Set(['rag-toggle-btn', 'text-emojis', 'chat-fullwidth']);
+// persona-section is a fork-local feature (static/js/personas.js), off until enabled.
+export const UI_VIS_DEFAULT_OFF = new Set(['rag-toggle-btn', 'text-emojis', 'chat-fullwidth', 'persona-section']);
 
 /**
  * Resolve every UI_VIS_MAP selector to visible (true) or hidden (false) for the
