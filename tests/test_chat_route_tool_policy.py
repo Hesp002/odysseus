@@ -342,3 +342,25 @@ def test_frontend_sends_explicit_allow_web_search_false_in_agent_mode():
     assert "fd.append('allow_web_search', el('web-toggle').checked ? 'true' : 'false')" in source, (
         "Frontend must send explicit allow_web_search=false in agent mode when toggle is off"
     )
+
+
+def test_memory_auto_escalation_drops_mcp():
+    """An auto-escalated "remember that..." turn builds its policy with
+    disable_mcp, so untrusted MCP descriptions don't force an approval
+    prompt for the manage_memory write."""
+    source = _CHAT_ROUTES.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    chat_stream_func = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "chat_stream"
+    )
+    calls = [
+        node for node in ast.walk(chat_stream_func)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "build_effective_tool_policy"
+        and any(kw.arg == "disable_mcp" for kw in node.keywords)
+    ]
+    assert calls, "chat_stream must pass disable_mcp to build_effective_tool_policy"
+    segment = ast.get_source_segment(source, chat_stream_func)
+    assert '_tool_intent.category == "memory"' in segment
+    assert classify_tool_intent("My dog is named Ace. Remember that.").category == "memory"
