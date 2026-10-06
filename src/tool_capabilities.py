@@ -533,6 +533,17 @@ def tool_result_should_arm_gate(
         and command_policy.trusts_workspace_result(tool_name, content)
     ):
         return False
+    # Reading the user's own skills (the same text the skills index already
+    # puts in context) does not arm the gate while the command policy guards
+    # every risky follow-up. Teacher-written skills need an explicit approval
+    # before they are saved, so nothing unreviewed lands in this store.
+    if (
+        tool_name == "manage_skills"
+        and command_policy.policy_active()
+        and _action_from_content(tool_name, content)
+        in _PRIVATE_ACTION_READS["manage_skills"]
+    ):
+        return False
     if tool_result_is_successful(result):
         return True
     # ``format_tool_result`` serializes every additional structured field, so

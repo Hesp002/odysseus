@@ -435,3 +435,16 @@ def test_skills_index_preface_does_not_arm_gate_in_policy_modes(auto_mode):
     source = inspect.getsource(chat_processor)
     block = source[source.index('"available skills index"'):]
     assert "arm_tool_gate=not command_policy_active()" in block[:400]
+
+
+def test_reading_skills_does_not_arm_the_gate_in_policy_modes(monkeypatch):
+    from src.tool_capabilities import tool_result_should_arm_gate
+
+    ok = {"output": "---\nname: diagnose-crash\n---\nprocedure", "exit_code": 0}
+    view = json.dumps({"action": "view", "name": "diagnose-crash"})
+    edit = json.dumps({"action": "edit", "name": "diagnose-crash"})
+    monkeypatch.setenv(command_policy.MODE_ENV, "auto")
+    assert not tool_result_should_arm_gate("manage_skills", ok, view)
+    assert tool_result_should_arm_gate("manage_skills", ok, edit)
+    monkeypatch.setenv(command_policy.MODE_ENV, "off")
+    assert tool_result_should_arm_gate("manage_skills", ok, view)
