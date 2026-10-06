@@ -426,3 +426,12 @@ def test_low_signal_question_matching_a_skill_gets_its_tools(auto_mode, monkeypa
 
     assert crash_tools and "'bash'" in crash_tools and "'manage_skills'" in crash_tools, crash_tools
     assert hi_tools is None or "'bash'" not in hi_tools, hi_tools
+
+
+def test_skills_index_preface_does_not_arm_gate_in_policy_modes(auto_mode):
+    import inspect
+    import src.chat_processor as chat_processor
+
+    source = inspect.getsource(chat_processor)
+    block = source[source.index('"available skills index"'):]
+    assert "arm_tool_gate=not command_policy_active()" in block[:400]

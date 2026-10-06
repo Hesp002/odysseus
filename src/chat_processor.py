@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from src.chat_helpers import extract_urls
 from src.youtube_handler import is_youtube_url
 from src.search import comprehensive_web_search, fetch_webpage_content
+from src.command_policy import policy_active as command_policy_active
 from src.prompt_security import (
     UNTRUSTED_CONTEXT_POLICY,
     saved_memory_context_message,
@@ -547,6 +548,9 @@ class ChatProcessor:
                 preface.append(untrusted_context_message(
                     "available skills index",
                     "\n".join(lines),
+                    # Present on every agent turn; with the command policy on,
+                    # arming on it would make every action an approval.
+                    arm_tool_gate=not command_policy_active(),
                 ))
 
         return preface, rag_sources, web_sources
