@@ -31,6 +31,7 @@ from src.context_compactor import (
 )
 from src.settings import get_setting
 from src.prompt_security import untrusted_context_message
+from src.command_policy import policy_active as command_policy_active
 from src.action_intents import classify_tool_intent
 from src.tool_security import (
     blocked_tools_for_owner,
@@ -1215,6 +1216,59 @@ def _explicitly_references_missing_workspace(text: str, workspace: Optional[str]
     if not text.strip():
         return False
     return bool(_EXPLICIT_WORKSPACE_REFERENCE_RE.search(text))
+
+
+def _skills_for_owner(owner: Optional[str]) -> list:
+    """The owner's skills, or [] when skills are off or unavailable."""
+    try:
+        from services.memory.skills import SkillsManager
+        from src.constants import DATA_DIR
+        try:
+            from routes.prefs_routes import _load_for_user as _load_prefs
+            if not (_load_prefs(owner) or {}).get("skills_enabled", True):
+                return []
+        except Exception:
+            pass
+        return SkillsManager(DATA_DIR).load(owner=owner)
+    except Exception as e:
+        logger.debug(f"[tool-rag] skills unavailable: {e}")
+        return []
+
+
+def _owner_has_skills(owner: Optional[str]) -> bool:
+    return bool(_skills_for_owner(owner))
+
+
+def _skill_tools_for_turn(owner: Optional[str], query: str) -> Set[str]:
+    """manage_skills plus the declared tools of skills matching *query*.
+
+    The skill index injected by _build_system_prompt tells the model to call
+    `manage_skills action=view`, and matched skills are pasted into the prompt
+    as procedures — but neither path goes through tool selection, so the model
+    could be handed a procedure naming tools (grep, read_file, ...) that are
+    not in its schema list. Empty when nothing matches.
+    """
+    if not query:
+        return set()
+    skills = _skills_for_owner(owner)
+    if not skills:
+        return set()
+    try:
+        from services.memory.skills import SkillsManager
+        from src.constants import DATA_DIR
+        from src.tool_policy import known_tool_names
+
+        known = known_tool_names()
+        tools: Set[str] = set()
+        for skill in SkillsManager(DATA_DIR).get_relevant_skills(
+            query, skills=skills, threshold=0.25, max_items=3,
+        ):
+            tools.add("manage_skills")
+            tools.update(t for t in (skill.get("requires_toolsets") or []) if t in known)
+        return tools
+    except Exception as e:
+        logger.debug(f"[tool-rag] skill-aware tool include skipped: {e}")
+        return set()
 
 
 def _local_computer_rules() -> str:
@@ -2726,6 +2780,7 @@ def _build_system_prompt(
                     _skills_message = untrusted_context_message(
                         "skills",
                         _skills_text,
+                        arm_tool_gate=not command_policy_active(),
                     )
                 else:
                     _skills_message = None
@@ -2741,6 +2796,7 @@ def _build_system_prompt(
                 _integ_message = untrusted_context_message(
                     "integrations",
                     _integ_prompt,
+                    arm_tool_gate=not command_policy_active(),
                 )
         except Exception as _integ_err:
             logger.debug(f"Integration prompt injection skipped: {_integ_err}")
@@ -2753,6 +2809,7 @@ def _build_system_prompt(
                 _mcp_desc_message = untrusted_context_message(
                     "MCP tools",
                     _mcp_desc,
+                    arm_tool_gate=not command_policy_active(),
                 )
         except Exception as _mcp_err:
             logger.debug(f"MCP description injection skipped: {_mcp_err}")
@@ -3543,8 +3600,16 @@ async def stream_agent_loop(
             "mcp__email__list_emails", "mcp__email__read_email", "mcp__email__scan_email_unsubscribes",
         })
     _prompt_active_document = active_document if _active_document_relevant else None
+    # A low-signal question ("why did Vesktop crash?") that matches one of the
+    # user's skills is a real task: the skill names the tools it needs.
+    _skill_turn_tools = (
+        _skill_tools_for_turn(owner, _last_user)
+        if _low_signal_turn and not _casual_low_signal_turn and not guide_only
+        else set()
+    )
     _direct_low_signal = (
         _low_signal_turn
+        and not _skill_turn_tools
         and not _existing_conversation
         and not bool(_intent.get("continuation"))
         and not plan_mode
@@ -4043,36 +4108,16 @@ async def stream_agent_loop(
     # (grep, read_file, ...) that aren't in its schema list. Keep the schemas
     # in lockstep: manage_skills is callable whenever any skill is indexed,
     # and a matched skill's declared requires_toolsets ride along with it.
-    if not guide_only and _relevant_tools is not None and not _low_signal_turn:
-        try:
-            from services.memory.skills import SkillsManager
-            from src.constants import DATA_DIR
-            _skills_on = True
-            try:
-                from routes.prefs_routes import _load_for_user as _load_prefs
-                _skills_on = (_load_prefs(owner) or {}).get("skills_enabled", True)
-            except Exception:
-                pass
-            _sm = SkillsManager(DATA_DIR)
-            _owner_skills = _sm.load(owner=owner) if _skills_on else []
-            if _owner_skills:
-                _relevant_tools.add("manage_skills")
-                if _retrieval_query:
-                    # Validate against every known executable tool, not just
-                    # TOOL_SECTIONS — code-nav tools (grep/glob/ls) ship as
-                    # schemas without a prompt-prose section.
-                    from src.tool_policy import known_tool_names
-                    _known = known_tool_names()
-                    for _sk in _sm.get_relevant_skills(
-                        _retrieval_query, skills=_owner_skills,
-                        threshold=0.25, max_items=3,
-                    ):
-                        _relevant_tools.update(
-                            t for t in (_sk.get("requires_toolsets") or [])
-                            if t in _known
-                        )
-        except Exception as _e:
-            logger.debug(f"[tool-rag] skill-aware tool include skipped: {_e}")
+    # Keep the schemas in lockstep: manage_skills is callable whenever any
+    # skill is indexed (except on low-signal turns), and a matched skill's
+    # declared requires_toolsets ride along with it, low-signal or not.
+    if not guide_only and _relevant_tools is not None and not _casual_low_signal_turn:
+        if _skill_turn_tools:
+            _relevant_tools.update(_skill_turn_tools)
+        elif not _low_signal_turn:
+            _relevant_tools.update(_skill_tools_for_turn(owner, _retrieval_query))
+        if not _low_signal_turn and _owner_has_skills(owner):
+            _relevant_tools.add("manage_skills")
 
     _intent_domains = set(_intent.get("domains") or set())
     _base_relevant_tools = None if _relevant_tools is None else set(_relevant_tools)

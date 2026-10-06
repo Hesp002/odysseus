@@ -336,3 +336,93 @@ def test_local_results_still_arm_the_gate_when_policy_is_off(monkeypatch):
 
     monkeypatch.setenv(command_policy.MODE_ENV, "off")
     assert tool_result_should_arm_gate("bash", {"output": "x", "exit_code": 0}, "git status")
+
+
+def test_configured_context_does_not_arm_the_gate_in_policy_modes(monkeypatch):
+    from src.prompt_security import untrusted_context_message
+    from src.tool_capabilities import messages_contain_external_untrusted_context
+
+    monkeypatch.setenv(command_policy.MODE_ENV, "auto")
+    assert command_policy.policy_active()
+    quiet = untrusted_context_message("skills", "x", arm_tool_gate=not command_policy.policy_active())
+    assert not messages_contain_external_untrusted_context([quiet])
+    monkeypatch.setenv(command_policy.MODE_ENV, "off")
+    loud = untrusted_context_message("skills", "x", arm_tool_gate=not command_policy.policy_active())
+    assert messages_contain_external_untrusted_context([loud])
+
+
+def test_short_queries_do_not_match_skills_by_substring(tmp_path):
+    from services.memory.skills import SkillsManager
+
+    skill_dir = tmp_path / "skills" / "omarchy" / "diagnose-crash"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: diagnose-crash\ndescription: Diagnose why a program crashed on this machine.\n"
+        "status: published\nowner: me\ntags: [crash, crashed]\nrequires_toolsets: [bash]\n---\n\n"
+        "## When to Use\n\nA program crashed.\n"
+    )
+    manager = SkillsManager(str(tmp_path))
+    skills = manager.load(owner="me")
+    assert manager.get_relevant_skills("hi", skills=skills, threshold=0.25) == []
+    matched = manager.get_relevant_skills("why did Vesktop crash this morning?", skills=skills, threshold=0.25)
+    assert [s["name"] for s in matched] == ["diagnose-crash"]
+
+
+def test_low_signal_question_matching_a_skill_gets_its_tools(auto_mode, monkeypatch):
+    import services.memory.skills as skills_mod
+    import src.agent_loop as agent_loop
+
+    skill = {
+        "name": "diagnose-crash", "status": "published", "owner": None,
+        "description": "Diagnose crashes", "tags": ["crash"],
+        "requires_toolsets": ["bash", "read_file"],
+    }
+    monkeypatch.setattr(skills_mod.SkillsManager, "load", lambda self, owner=None: [skill])
+    monkeypatch.setattr(
+        skills_mod.SkillsManager, "get_relevant_skills",
+        lambda self, query, skills=None, **kw: [skill] if "crash" in query else [],
+    )
+    monkeypatch.setattr(skills_mod.SkillsManager, "record_use", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "get_setting", lambda key, default=None: default, raising=False)
+    monkeypatch.setattr(agent_loop, "get_mcp_manager", lambda: None, raising=False)
+    monkeypatch.setattr(agent_loop, "estimate_tokens", lambda *args, **kwargs: 10)
+    monkeypatch.setattr(agent_loop, "blocked_tools_for_owner", lambda owner: set(), raising=False)
+
+    # Keep the embedding-based tool index out of the test: it loads a model.
+    import src.tool_index as tool_index
+    monkeypatch.setattr(tool_index, "get_tool_index", lambda: None)
+
+    sent = []
+    real_info = agent_loop.logger.info
+
+    def capture_info(message, *args, **kwargs):
+        text = str(message)
+        if "[agent-debug] round=" in text:
+            sent.append(text.split("relevant_tools=", 1)[-1])
+        return real_info(message, *args, **kwargs)
+
+    monkeypatch.setattr(agent_loop.logger, "info", capture_info)
+
+    async def fake_stream(*args, **kwargs):
+        yield f"data: {json.dumps({'delta': 'Done.'})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr(agent_loop, "stream_llm_with_fallback", fake_stream)
+
+    async def collect(question):
+        return [
+            chunk
+            async for chunk in agent_loop.stream_agent_loop(
+                "http://local.test/v1", "small-local-model",
+                [{"role": "user", "content": question}], max_rounds=1,
+            )
+        ]
+
+    asyncio.run(collect("why did Vesktop crash this morning?"))
+    crash_tools = sent[-1] if sent else None
+    before = len(sent)
+    asyncio.run(collect("hi"))
+    hi_tools = sent[-1] if len(sent) > before else None
+
+    assert crash_tools and "'bash'" in crash_tools and "'manage_skills'" in crash_tools, crash_tools
+    assert hi_tools is None or "'bash'" not in hi_tools, hi_tools

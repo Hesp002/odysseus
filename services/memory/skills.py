@@ -705,7 +705,9 @@ class SkillsManager:
                 tag_tokens = _tokenize(tag)
                 if tag_tokens and tag_tokens <= query_tokens:
                     score = max(score, 0.3) * 1.3
-            if query.lower() in (sk.get("description") or "").lower():
+            # Whole-query containment only means something for a real phrase;
+            # a short query like "hi" is a substring of half the descriptions.
+            if len(query_tokens) >= 3 and query.lower() in (sk.get("description") or "").lower():
                 score = max(score, 0.6)
             score *= 1.0 + _to_float(sk.get("confidence"), 0.5) * 0.1
             if sk.get("uses", 0) > 0:
