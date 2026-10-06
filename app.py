@@ -820,6 +820,8 @@ app.include_router(setup_compare_routes(session_manager))
 # User Preferences
 from routes.prefs_routes import setup_prefs_routes
 app.include_router(setup_prefs_routes())
+from routes.omarchy_theme_routes import setup_omarchy_theme_routes
+app.include_router(setup_omarchy_theme_routes())
 
 # Backup (export/import user data)
 from routes.backup_routes import setup_backup_routes

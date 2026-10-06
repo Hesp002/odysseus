@@ -32,6 +32,10 @@ export const THEMES = {
 };
 
 const DEFAULT_THEME = 'dark';
+// Follows the Omarchy desktop theme. Its palette comes from /api/omarchy-theme
+// (written by a host theme-set hook); the swatch only shows when one exists.
+const OMARCHY_THEME = 'omarchy';
+let _omarchyColors = null;
 const LS_KEY = 'odysseus-theme';
 const CUSTOM_THEMES_KEY = 'odysseus-custom-themes';
 
@@ -126,6 +130,35 @@ function _syncCustomThemesToServer(ct) {
       body: JSON.stringify({ value: ct }),
     }).catch(e => console.warn('Theme sync (custom) failed:', e));
   } catch (e) { console.warn('Theme sync (custom) error:', e); }
+}
+
+// ── Omarchy theme bridge ──
+async function _fetchOmarchyColors() {
+  try {
+    const res = await fetch('/api/omarchy-theme', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data && data.available ? data.colors : null;
+  } catch { return null; }
+}
+
+function _sameColors(a, b) {
+  return !!a && !!b && ['bg', 'fg', 'panel', 'border', 'red']
+    .every(k => String(a[k] || '').toLowerCase() === String(b[k] || '').toLowerCase());
+}
+
+// Refresh the palette; if the omarchy theme is active and the desktop theme
+// changed, recolor in place. Re-renders the swatches only when something changed.
+async function _refreshOmarchyTheme() {
+  const colors = await _fetchOmarchyColors();
+  const changed = (colors || _omarchyColors) ? !_sameColors(colors, _omarchyColors) : false;
+  _omarchyColors = colors;
+  if (!changed) return;
+  const saved = getSaved();
+  if (colors && saved && saved.name === OMARCHY_THEME && !_sameColors(colors, saved.colors)) {
+    save(OMARCHY_THEME, colors, saved);
+  }
+  initThemeUI();
 }
 
 // --- Syntax color derivation from theme base colors ---
@@ -649,7 +682,17 @@ export function initThemeUI() {
       </div>
       ${name === 'dark' ? 'original' : (name === 'gpt' ? 'GPT' : name)}
     </div>
-  `).join('');
+  `).join('') + (_omarchyColors ? `
+    <div class="theme-swatch${activeName === OMARCHY_THEME ? ' active' : ''}" data-theme="${OMARCHY_THEME}" title="Follows the Omarchy desktop theme">
+      <div class="theme-swatch-colors">
+        <span style="background:${_omarchyColors.bg}"></span>
+        <span style="background:${_omarchyColors.panel}"></span>
+        <span style="background:${_omarchyColors.fg}"></span>
+        <span style="background:${_omarchyColors.red}"></span>
+      </div>
+      omarchy
+    </div>
+  ` : '');
 
   // Render custom theme swatches into separate card
   const userGrid = document.getElementById('themeUserGrid');
@@ -702,7 +745,8 @@ export function initThemeUI() {
       sw.addEventListener('click', (e) => {
         if (e.target.closest('.theme-delete-btn')) return;
         const name = sw.dataset.theme;
-        const colors = sw.dataset.custom ? customThemes[name] : THEMES[name];
+        const colors = sw.dataset.custom ? customThemes[name]
+          : (name === OMARCHY_THEME ? _omarchyColors : THEMES[name]);
         if (!colors) return;
         applyColors(colors);
         clearAllActive();
@@ -760,7 +804,8 @@ export function initThemeUI() {
 
   // Reference colors for per-picker reset (the theme you started from)
   const refName = saved ? saved.name : DEFAULT_THEME;
-  const refColors = THEMES[refName] || customThemes[refName] || currentColors;
+  const refColors = THEMES[refName] || customThemes[refName]
+    || (refName === OMARCHY_THEME && _omarchyColors) || currentColors;
   const refDefaults = computeAdvancedDefaults(refColors);
 
   // Sync reset button visibility based on whether color differs from reference
@@ -2106,6 +2151,13 @@ async function _initWithSync() {
     }
   } catch (e) { console.warn('Custom theme server sync failed:', e); }
   initThemeUI();
+  // Omarchy palette: load once, then re-check whenever the window regains focus
+  // (switching the desktop theme means you were just in another window).
+  _refreshOmarchyTheme();
+  window.addEventListener('focus', () => _refreshOmarchyTheme());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') _refreshOmarchyTheme();
+  });
 }
 
 if (document.readyState === 'loading') {
