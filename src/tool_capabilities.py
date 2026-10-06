@@ -14,6 +14,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping
 
+from src import command_policy
 from src.tool_approval_scopes import CHAT_SESSION_APPROVAL_CONTEXT_MARKER
 from src.tool_security import BUILTIN_EMAIL_TOOLS, is_public_blocked_tool
 
@@ -527,6 +528,11 @@ def tool_result_should_arm_gate(
     capabilities = capabilities_for_action(tool_name, content)
     if capabilities.result_integrity is ResultIntegrity.SYSTEM:
         return False
+    if (
+        capabilities.result_integrity is ResultIntegrity.WORKSPACE_UNTRUSTED
+        and command_policy.trusts_workspace_result(tool_name, content)
+    ):
+        return False
     if tool_result_is_successful(result):
         return True
     # ``format_tool_result`` serializes every additional structured field, so
@@ -569,6 +575,10 @@ POST_EXTERNAL_BLOCKED_EFFECTS = frozenset(
 class ToolGateDecision:
     allowed: bool
     reason: str | None = None
+    # Refused by the command policy; no approval can lift it.
+    hard_block: bool = False
+    # Asked by the command policy: approvable for this exact action only.
+    policy_gated: bool = False
 
 
 _EXTERNAL_MESSAGE_SOURCES = frozenset(
@@ -663,6 +673,17 @@ class ToolRunSecurityContext:
                     "It requires an interactive session."
                 ),
             )
+        # The command policy applies whether or not untrusted context has been
+        # seen, and neither approval scope lifts it.
+        verdict = command_policy.evaluate(tool_name, content)
+        if verdict.level == command_policy.BLOCK:
+            return ToolGateDecision(
+                False,
+                f"Blocked by the command policy: {verdict.reason}",
+                hard_block=True,
+            )
+        if verdict.level == command_policy.ASK:
+            return ToolGateDecision(False, verdict.reason, policy_gated=True)
         if self.approval_gate_bypassed:
             return ToolGateDecision(True)
         if not self.external_untrusted_context_seen:

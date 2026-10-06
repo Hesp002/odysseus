@@ -1195,6 +1195,10 @@ def setup_chat_routes(
                 decision = str(tool_approval_decision or "").strip().lower()
                 if decision not in {"approve", "approve_task", "deny"}:
                     raise HTTPException(400, "Invalid tool approval decision.")
+                if decision == "approve" and pending_tool_approval.policy_only:
+                    # Command-policy cards offer no chat-session scope; never
+                    # persist a chat-wide grant for one.
+                    decision = "approve_task"
                 if plan_mode:
                     raise HTTPException(
                         409,

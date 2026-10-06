@@ -89,6 +89,21 @@ RUN if [ -n "$EXTRA_PIP_PACKAGES" ]; then pip install --no-cache-dir $EXTRA_PIP_
 # lib installed above; see the apt note near the top of this stage.
 RUN pip install --no-cache-dir python-magic==0.4.27
 
+# Cherry-pick extra Debian packages the same way, e.g.
+# EXTRA_APT_PACKAGES="gdb systemd-coredump zstd" so the agent can analyze the
+# host's crash dumps. Late in the file so changing it keeps the pip layers.
+# /host/{lib,lib64,bin,sbin} mirror an Arch-style merged /usr: mount the
+# host's /usr read-only at /host/usr and gdb's `set sysroot /host` resolves
+# the crashed program's libraries against the host's copies.
+ARG EXTRA_APT_PACKAGES=""
+RUN if [ -n "$EXTRA_APT_PACKAGES" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends $EXTRA_APT_PACKAGES \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi \
+    && mkdir -p /host \
+    && ln -s usr/lib /host/lib && ln -s usr/lib /host/lib64 \
+    && ln -s usr/bin /host/bin && ln -s usr/bin /host/sbin
+
 # Pre-install the patched basicsr/gfpgan/facexlib wheels built in the
 # realesrgan-wheels stage (--no-deps keeps the image lean — torch & friends are
 # pulled only when realesrgan is actually installed). With these dists already

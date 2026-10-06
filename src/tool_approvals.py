@@ -117,6 +117,7 @@ def _binding_payload(
     continuation_query: Any,
     effects: tuple[str, ...],
     result_integrity: str,
+    policy_gated: bool = False,
 ) -> dict[str, Any]:
     return {
         "owner": _normalized_owner(owner),
@@ -137,6 +138,7 @@ def _binding_payload(
         "continuation_query": _normalized_continuation_query(continuation_query),
         "effects": list(effects),
         "result_integrity": str(result_integrity),
+        "policy_gated": bool(policy_gated),
     }
 
 
@@ -162,8 +164,20 @@ class PendingToolApproval:
     # exposed in the browser payload.
     selected_tools: tuple[str, ...] = ()
     continuation_query: str = ""
+    # Asked by the command policy rather than the external-context gate.
+    policy_gated: bool = False
+
+    @property
+    def policy_only(self) -> bool:
+        """Asked by the command policy with no untrusted context involved.
+
+        Approving such a card runs this one action and grants no wider scope.
+        """
+        return self.policy_gated and not self.external_untrusted_context_seen
 
     def public_payload(self, *, reason: str | None = None) -> dict[str, Any]:
+        if self.policy_only:
+            return self._policy_payload(reason)
         return {
             "kind": "tool_approval",
             "approval_id": self.approval_id,
@@ -201,17 +215,46 @@ class PendingToolApproval:
                     "description": "Do not execute the proposed action.",
                 },
             ],
-            "action": {
-                "tool": self.tool_name,
-                # Show the complete sealed input so approval never hides
-                # trailing lines.  This is not read back as authority.
-                "content": self.content,
-                "digest": self.digest[:16],
-                "effects": list(self.effects),
-                "workspace": self.workspace or None,
-                "document_id": self.document_id or None,
-                "document_version": self.document_version,
-            },
+            "action": self._action_payload(),
+        }
+
+    def _policy_payload(self, reason: str | None) -> dict[str, Any]:
+        return {
+            "kind": "tool_approval",
+            "approval_id": self.approval_id,
+            "session_id": self.session_id,
+            # The card renders the question but not the description, so the
+            # policy's reason goes in the question too.
+            "question": f"Allow this action? {reason}" if reason else "Allow this action?",
+            "description": reason or "The command policy asks before this action.",
+            "options": [
+                {
+                    "label": "Allow",
+                    # The task value is the one-use grant for these cards:
+                    # consume() narrows it to this single action.
+                    "value": TASK_APPROVAL_DECISION,
+                    "description": "Run this exact action. Later actions are checked again.",
+                },
+                {
+                    "label": "Deny",
+                    "value": DENY_APPROVAL_DECISION,
+                    "description": "Do not execute the proposed action.",
+                },
+            ],
+            "action": self._action_payload(),
+        }
+
+    def _action_payload(self) -> dict[str, Any]:
+        return {
+            "tool": self.tool_name,
+            # Show the complete sealed input so approval never hides
+            # trailing lines.  This is not read back as authority.
+            "content": self.content,
+            "digest": self.digest[:16],
+            "effects": list(self.effects),
+            "workspace": self.workspace or None,
+            "document_id": self.document_id or None,
+            "document_version": self.document_version,
         }
 
 
@@ -270,6 +313,7 @@ class ExactToolApproval:
             continuation_query=self.pending.continuation_query,
             effects=effects,
             result_integrity=result_integrity,
+            policy_gated=self.pending.policy_gated,
         )
         return _canonical_digest(expected) == self.pending.digest
 
@@ -352,6 +396,7 @@ class ToolApprovalStore:
         continuation_query: Any = None,
         external_untrusted_context_seen: bool,
         capabilities: ToolCapabilities,
+        policy_gated: bool = False,
     ) -> PendingToolApproval:
         now = time.time()
         effects = tuple(sorted(effect.value for effect in capabilities.effects))
@@ -371,6 +416,7 @@ class ToolApprovalStore:
             continuation_query=continuation_query,
             effects=effects,
             result_integrity=result_integrity,
+            policy_gated=policy_gated,
         )
         pending = PendingToolApproval(
             approval_id=secrets.token_urlsafe(32),
@@ -393,6 +439,7 @@ class ToolApprovalStore:
             expires_at=now + self._ttl_seconds,
             selected_tools=tuple(payload["selected_tools"]),
             continuation_query=payload["continuation_query"],
+            policy_gated=payload["policy_gated"],
         )
         with self._lock:
             self._purge_expired_locked(now)
@@ -461,7 +508,7 @@ class ToolApprovalStore:
         scope = scope_for_decision(normalized_decision)
         if scope is None:
             return None
-        if not allow_continuation:
+        if not allow_continuation or pending.policy_only:
             return ExactToolApproval(
                 pending,
                 scope=ToolApprovalScope.SINGLE_ACTION,

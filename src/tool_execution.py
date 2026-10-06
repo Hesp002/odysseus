@@ -844,11 +844,16 @@ async def execute_tool_block(
 
     approval_claimed = False
     if exact_approval is not None:
-        if (
-            not isinstance(security_context, ToolRunSecurityContext)
-            or not security_context.external_untrusted_context_seen
-            or not exact_approval.pending.external_untrusted_context_seen
-        ):
+        armed_by_external_context = (
+            isinstance(security_context, ToolRunSecurityContext)
+            and security_context.external_untrusted_context_seen
+            and exact_approval.pending.external_untrusted_context_seen
+        )
+        asked_by_command_policy = (
+            isinstance(security_context, ToolRunSecurityContext)
+            and exact_approval.pending.policy_gated
+        )
+        if not (armed_by_external_context or asked_by_command_policy):
             return (
                 f"{getattr(block, 'tool_type', None)}: BLOCKED",
                 {

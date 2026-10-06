@@ -5745,6 +5745,15 @@ async def stream_agent_loop(
                     "Tool blocked before approval by current policy: %s",
                     block.tool_type,
                 )
+            elif not security_decision.allowed and security_decision.hard_block:
+                desc = f"{block.tool_type}: BLOCKED"
+                result = {
+                    "error": security_decision.reason,
+                    "exit_code": 1,
+                    "blocked": True,
+                    "policy": "command_policy",
+                }
+                logger.info("Tool blocked by command policy: %s", block.tool_type)
             elif not security_decision.allowed:
                 approval_document = (
                     active_document
@@ -5819,6 +5828,7 @@ async def stream_agent_loop(
                             block.tool_type,
                             block.content,
                         ),
+                        policy_gated=security_decision.policy_gated,
                     )
                     desc = f"{block.tool_type}: APPROVAL REQUIRED"
                     result = {
