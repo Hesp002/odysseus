@@ -47,6 +47,22 @@ if [ "${ODYSSEUS_ENABLE_HOST_DOCKER:-}" = "true" ] && [ -S "$DOCKER_SOCK" ]; the
     fi
 fi
 
+# Extra host groups for read-only bind mounts, e.g. ODYSSEUS_EXTRA_GIDS=981
+# (the host's systemd-journal) so the app can read a mounted /var/log/journal.
+# gosu below is called by username, which keeps supplementary groups.
+for EXTRA_GID in ${ODYSSEUS_EXTRA_GIDS:-}; do
+    case "$EXTRA_GID" in
+        ''|*[!0-9]*|0) echo "Ignoring invalid ODYSSEUS_EXTRA_GIDS entry: $EXTRA_GID" >&2; continue ;;
+    esac
+    if ! getent group "$EXTRA_GID" >/dev/null 2>&1; then
+        groupadd -g "$EXTRA_GID" "host_gid_$EXTRA_GID" || true
+    fi
+    EXTRA_GROUP="$(getent group "$EXTRA_GID" | cut -d: -f1)"
+    if [ -n "$EXTRA_GROUP" ]; then
+        usermod -aG "$EXTRA_GROUP" "$ODY_USER" 2>/dev/null || true
+    fi
+done
+
 mount_root_for() {
     awk -v target="$1" '$5 == target { print $4; exit }' /proc/self/mountinfo 2>/dev/null || true
 }
