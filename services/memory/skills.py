@@ -839,7 +839,9 @@ class SkillsManager:
                 tag_tokens = _tokenize(tag)
                 if tag_tokens and tag_tokens <= query_tokens:
                     lexical_score = max(lexical_score, 0.3) * 1.3
-            if query.lower() in (sk.get("description") or "").lower():
+            # Whole-query containment only means something for a real phrase;
+            # a short query like "hi" is a substring of half the descriptions.
+            if len(query_tokens) >= 3 and query.lower() in (sk.get("description") or "").lower():
                 lexical_score = max(lexical_score, 0.6)
             semantic_score = semantic_scores.get(position, -1.0)
             if lexical_score < threshold and semantic_score < semantic_threshold:

@@ -58,6 +58,19 @@ def approval_mode() -> str:
     return mode if mode in MODES else "off"
 
 
+def policy_active() -> bool:
+    """Whether the per-action policy guards every host-touching call.
+
+    When it does, locally configured context (the skills catalogue,
+    integration and MCP tool descriptions) is still kept out of the system
+    role but no longer arms the external-context gate: it is present on
+    every turn, so arming on it would turn every action into an approval.
+    Real outside content (web results, fetched pages, email, MCP tool
+    results) still arms it.
+    """
+    return approval_mode() != "off"
+
+
 # --- Always blocked -------------------------------------------------------
 
 # Credential stores. Matched anywhere in a command or path.

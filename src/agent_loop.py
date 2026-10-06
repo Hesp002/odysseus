@@ -58,6 +58,7 @@ from src.context_compactor import (
 )
 from src.settings import get_setting
 from src.prompt_security import untrusted_context_message
+from src.command_policy import policy_active as command_policy_active
 from src.action_intents import classify_tool_intent
 from src.tool_security import (
     blocked_tools_for_owner,
@@ -15073,6 +15074,7 @@ def _build_system_prompt(
                     _skills_message = untrusted_context_message(
                         "skills",
                         _skills_text,
+                        arm_tool_gate=not command_policy_active(),
                     )
                 else:
                     _skills_message = None
@@ -15088,6 +15090,7 @@ def _build_system_prompt(
                 _integ_message = untrusted_context_message(
                     "integrations",
                     _integ_prompt,
+                    arm_tool_gate=not command_policy_active(),
                 )
         except Exception as _integ_err:
             logger.debug(f"Integration prompt injection skipped: {_integ_err}")
@@ -15107,6 +15110,7 @@ def _build_system_prompt(
                 _mcp_desc_message = untrusted_context_message(
                     "MCP tools",
                     _mcp_desc,
+                    arm_tool_gate=not command_policy_active(),
                 )
         except Exception as _mcp_err:
             logger.debug(f"MCP description injection skipped: {_mcp_err}")
