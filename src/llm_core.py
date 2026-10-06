@@ -772,6 +772,49 @@ def _parse_ollama_response(data: dict) -> str:
     return message.get("content") or data.get("response") or ""
 
 
+def _is_local_ollama_v1(target_url: str) -> bool:
+    # Only Ollama's own port: other local servers (vLLM, llama.cpp, LM Studio)
+    # also match _is_ollama_openai_compat_url's localhost check.
+    return _is_ollama_openai_compat_url(target_url) and urlparse(target_url).port == 11434
+
+
+# Appended to a streamed reply that Ollama ended without a finish signal, so
+# the user sees (and the saved chat keeps) that the text is incomplete.
+_OLLAMA_STREAM_CUT_OFF_NOTE = (
+    "\n\n*⚠️ Reply cut off: the model stopped mid-response (the Ollama runner "
+    "hit an error, e.g. a lost GPU device). Check the Ollama server logs.*"
+)
+
+
+def _raise_if_ollama_reply_cut_off(data, target_url: str, provider: str) -> None:
+    """Reject a non-stream Ollama reply that ended without a finish signal.
+
+    When llama-server fails mid-generation (e.g. a Vulkan "device lost" after
+    another process hangs the GPU), Ollama's runner drops the error event and
+    ends the stream normally. The non-stream response is then HTTP 200 with
+    the partial text, no ``finish_reason`` (/v1) and ``done: false`` (native),
+    so the half-written text used to be returned as a complete answer.
+    Streams end the same way minus the final chunk and ``[DONE]``; see
+    _OLLAMA_STREAM_CUT_OFF_NOTE.
+    """
+    if not isinstance(data, dict):
+        return
+    cut_off = False
+    if provider == "ollama":
+        cut_off = data.get("done") is False
+    elif _is_local_ollama_v1(target_url):
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+            cut_off = choices[0].get("finish_reason") is None
+    if cut_off:
+        logger.warning("Ollama reply from %s ended without a finish signal; treating as failed", target_url)
+        raise HTTPException(
+            502,
+            "The model stopped mid-response without finishing (the Ollama runner hit an "
+            "error, e.g. a lost GPU device). Check the Ollama server logs.",
+        )
+
+
 def _host_match(url: str, *domains: str) -> bool:
     """Return True if url's hostname equals any of `domains` or is a subdomain of one.
 
@@ -2062,6 +2105,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
     if not r.is_success:
         raise HTTPException(502, f"Upstream {target_url} -> {r.status_code}: {r.text}")
     data = r.json()
+    _raise_if_ollama_reply_cut_off(data, target_url, provider)
     try:
         if provider == "anthropic":
             response = _parse_anthropic_response(data)
@@ -2454,6 +2498,7 @@ async def llm_call_async(
                 else:
                     detail = str(provider_error)
                 raise HTTPException(status, detail or "Upstream request failed")
+            _raise_if_ollama_reply_cut_off(data, target_url, provider)
             try:
                 reported_model = data.get("model") if isinstance(data, dict) else None
                 actual_model = (
@@ -2890,6 +2935,10 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                         return
                 for part, is_thinking in _harmony_router.flush():
                     yield _stream_delta_event(part, thinking=is_thinking)
+                # No done chunk: the runner failed mid-reply (see
+                # _raise_if_ollama_reply_cut_off).
+                logger.warning("Ollama stream from %s ended without done; reply cut off", target_url)
+                yield _stream_delta_event(_OLLAMA_STREAM_CUT_OFF_NOTE)
                 yield "data: [DONE]\n\n"
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _cooled = _mark_host_dead(target_url)
@@ -3358,6 +3407,11 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
             tc_event = _emit_tool_calls()
             if tc_event:
                 yield tc_event
+            if _is_local_ollama_v1(target_url):
+                # Ollama only sends [DONE] after a finished reply, so this is a
+                # runner failure mid-reply (see _raise_if_ollama_reply_cut_off).
+                logger.warning("Ollama stream from %s ended without [DONE]; reply cut off", target_url)
+                yield _stream_delta_event(_OLLAMA_STREAM_CUT_OFF_NOTE)
             yield "data: [DONE]\n\n"
 
     except (httpx.ConnectError, httpx.ConnectTimeout) as e:

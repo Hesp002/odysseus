@@ -84,7 +84,7 @@ def test_openai_compatible_chat_url_shapes(monkeypatch):
         return httpx.Response(
             200,
             request=request,
-            json={"choices": [{"message": {"content": "OK"}}]},
+            json={"choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}]},
         )
 
     monkeypatch.setattr(llm_core.httpx, "post", fake_post)
