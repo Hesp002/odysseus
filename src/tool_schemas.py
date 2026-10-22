@@ -974,9 +974,10 @@ FUNCTION_TOOL_SCHEMAS = [
                             "required": ["label"]
                         }
                     },
-                    "multi": {"type": "boolean", "description": "Set true ONLY when the question explicitly allows choosing more than one option. Otherwise omit it or set false. Default false."}
+                    "multi": {"type": "boolean", "description": "Set true ONLY when the question explicitly allows choosing more than one option. Otherwise omit it or set false. Default false."},
+                    "enable": {"type": "string", "enum": ["web", "shell"], "description": "Only when a system note says Web search or Shell access is OFF and you need it: ask the user to turn it on. The app fills in Yes/No options, so `options` may be omitted."}
                 },
-                "required": ["question", "options"]
+                "required": ["question"]
             }
         }
     },

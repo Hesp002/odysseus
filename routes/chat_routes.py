@@ -3622,6 +3622,24 @@ def setup_chat_routes(
                 exact_tool_approval.pending.request_authority
                 or RequestAuthority.empty(owner=_user, session_id=session, workspace=workspace)
             ).restrict(tool_policy)
+        if chat_mode == "agent" and not incognito and not image_generation_session:
+            # Fork: tell the model which toggles are off and how to ask for
+            # them; otherwise it narrates a search it cannot run.
+            _off_notes = []
+            if not _search_enabled:
+                _off_notes.append(("web", "Web search", "current or online information"))
+            if allow_bash is not None and str(allow_bash).lower() != "true":
+                _off_notes.append(("shell", "Shell access", "running a command on this computer"))
+            if _off_notes:
+                toggle_off_context = {"role": "system", "content": "\n".join(
+                    f"{label} is turned OFF by the user. If answering needs {need}, "
+                    f"do not pretend to use it and do not guess: call ask_user with "
+                    f"enable=\"{kind}\" and a one-line question. The app shows Yes/No buttons."
+                    for kind, label, need in _off_notes
+                )}
+                ctx.messages.insert(0, toggle_off_context)
+                if foreground_policy.enabled:
+                    getattr(ctx, 'route_messages', ctx.messages).insert(0, dict(toggle_off_context))
         _turn_contract = None
         # Image models execute directly, not through the text-agent inventory.
         # Keep the permission policy above, but do not apply routing omissions
@@ -3743,6 +3761,20 @@ def setup_chat_routes(
             if _corrected_browser_target:
                 _selected_tools = {'private_browser', 'web_fetch', 'web_search'}
                 _required_tools = {'private_browser'}
+            # Fork: a lookup the lexical classifier can't place ("Check the
+            # price of X") resolves to "unknown", which offers no tools at
+            # all, even with Web on. Offer the web family instead. With a
+            # toggle off, the web/shell turn must still reach the model so it
+            # can ask to enable it (ask_user enable=...), instead of failing
+            # before inference as unavailable.
+            if _turn_capabilities == frozenset({"unknown"}):
+                _turn_capabilities = frozenset({"search_browser"})
+                _active_turn_capabilities = frozenset()
+            if "web_search" in disabled_tools:
+                _active_turn_capabilities = _active_turn_capabilities - {"search_browser"}
+                _required_tools -= WEB_TOOL_NAMES | {"private_browser"}
+            if "bash" in disabled_tools:
+                _required_tools.discard("bash")
             _turn_contract = resolve_turn_contract(
                 capabilities=_turn_capabilities, schemas=_contract_schemas,
                 policy=_contract_policy, required_tools=_required_tools,

@@ -3,6 +3,21 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+ENABLE_QUESTIONS = {
+    "web": ("web search", "Web search is off. Turn it on for this?"),
+    "shell": ("shell access", "Shell access is off. Turn it on for this?"),
+}
+ENABLE_OPTIONS = {
+    "web": (
+        {"label": "Yes, search the web", "description": "Turns on Web search", "value": "enable"},
+        {"label": "No, answer without it", "description": ""},
+    ),
+    "shell": (
+        {"label": "Yes, allow shell access", "description": "Turns on Shell Access", "value": "enable"},
+        {"label": "No, answer without it", "description": ""},
+    ),
+}
+
 class AskUserTool:
     async def execute(self, content, ctx):
         """
@@ -34,6 +49,27 @@ class AskUserTool:
                     options.append({"label": label, "description": descr})
         else:
             question = raw
+
+        # Fork: a request to turn a toggle back on gets fixed options. The
+        # first one carries value "enable", which makes the card flip the
+        # toggle before sending; its label is worded so the follow-up turn
+        # classifies as a web/shell request.
+        enable = parsed.get("enable") if isinstance(parsed, dict) else None
+        if enable in ENABLE_OPTIONS:
+            label, default_question = ENABLE_QUESTIONS[enable]
+            question = question or default_question
+            result = {
+                "ask_user": {
+                    "question": question,
+                    "options": [dict(o) for o in ENABLE_OPTIONS[enable]],
+                    "multi": False,
+                    "enable": enable,
+                },
+                "output": f"Asked the user to turn on {label}: {question}\nAwaiting their answer.",
+                "exit_code": 0,
+            }
+            logger.info("Tool executed: ask_user enable=%s", enable)
+            return f"ask_user: enable {enable}", result
 
         if not question or len(options) < 2:
             return "ask_user: invalid", {

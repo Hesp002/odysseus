@@ -3017,6 +3017,16 @@ function _handleAskUserShortcut(event) {
 
 document.addEventListener('keydown', _handleAskUserShortcut);
 
+// Fork: "Yes" on an ask_user enable=web|shell card turns the toggle on by
+// clicking its button, so the saved preference, toast and styling all follow.
+function _enableToolToggle(kind) {
+  const ids = { web: ['web-toggle', 'web-toggle-btn'], shell: ['bash-toggle', 'bash-toggle-btn'] }[kind];
+  if (!ids) return;
+  const chk = document.getElementById(ids[0]);
+  const btn = document.getElementById(ids[1]);
+  if (chk && btn && !chk.checked) btn.click();
+}
+
 /**
  * Render an ask_user payload as a durable choice card.
  *
@@ -3141,6 +3151,7 @@ export function renderAskUserCard(payload, options) {
             document.dispatchEvent(new CustomEvent('odysseus:tool-approval', { detail }));
           }
         } else {
+          if (opt && opt.value === 'enable') _enableToolToggle(aq.enable);
           send(label);
         }
       });
