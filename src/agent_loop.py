@@ -22715,6 +22715,9 @@ async def stream_agent_loop(
     # (grep, read_file, ...) that aren't in its schema list. Keep the schemas
     # in lockstep: manage_skills is callable whenever any skill is indexed,
     # and a matched skill's declared requires_toolsets ride along with it.
+    # Tools a matched skill declares; the low-signal file-tool strip below
+    # must not take them away again.
+    _skill_required_tools: set = set()
     if (
         not guide_only
         and _relevant_tools is not None
@@ -22746,10 +22749,12 @@ async def stream_agent_loop(
                         threshold=0.25, max_items=3,
                         available_toolsets=(set(_known) - set(disabled_tools or [])),
                     ):
-                        _relevant_tools.update(
+                        _sk_tools = {
                             t for t in (_sk.get("requires_toolsets") or [])
                             if t in _known
-                        )
+                        }
+                        _relevant_tools.update(_sk_tools)
+                        _skill_required_tools.update(_sk_tools)
         except Exception as _e:
             logger.debug(f"[tool-rag] skill-aware tool include skipped: {_e}")
 
@@ -23897,9 +23902,9 @@ async def stream_agent_loop(
     if _low_signal_turn and not workspace and not _terminal_agent_mode and _relevant_tools is not None:
         # Retrieval and the core floor can surface file readers for a vague
         # local-project hint even though no project has been selected.
-        _relevant_tools.difference_update(_DOMAIN_TOOL_MAP["files"])
+        _relevant_tools.difference_update(_DOMAIN_TOOL_MAP["files"] - _skill_required_tools)
         if _base_relevant_tools is not None:
-            _base_relevant_tools.difference_update(_DOMAIN_TOOL_MAP["files"])
+            _base_relevant_tools.difference_update(_DOMAIN_TOOL_MAP["files"] - _skill_required_tools)
 
     if _relevant_tools is not None:
         logger.info("[agent-intent] selected_tools=%s", sorted(_relevant_tools)[:50])

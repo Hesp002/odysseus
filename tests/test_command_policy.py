@@ -228,8 +228,9 @@ def test_policy_gated_flag_is_sealed_into_the_digest():
     assert gated.digest != plain.digest
 
 
-def test_approved_policy_action_executes_without_untrusted_context(auto_mode, monkeypatch):
+def test_approved_policy_action_executes_without_untrusted_context(auto_mode, monkeypatch, tmp_path):
     import src.tool_execution as tool_execution
+    from src.agent_runtime.authority import OperationGrant, RequestAuthority
 
     ran = []
 
@@ -238,31 +239,46 @@ def test_approved_policy_action_executes_without_untrusted_context(auto_mode, mo
         return "bash", {"output": "ok", "exit_code": 0}
 
     monkeypatch.setattr(tool_execution, "_execute_tool_block_impl", fake_implementation)
+    monkeypatch.setattr(tool_execution, "_owner_is_admin", lambda owner: True)
+    # The agent loop always runs tools under a server request authority; bash
+    # is not granted here, so only the exact approval can admit it.
+    authority = RequestAuthority(
+        "policy-request", "me", "s1", str(tmp_path), (OperationGrant("get_workspace"),)
+    )
     store = ToolApprovalStore()
-    pending = _create(store)
+    pending = store.create(
+        owner="me",
+        session_id="s1",
+        origin_run_id="run1",
+        tool_name="bash",
+        content="git push",
+        workspace=str(tmp_path),
+        external_untrusted_context_seen=False,
+        capabilities=capabilities_for_action("bash", "git push"),
+        request_authority=authority,
+        policy_gated=True,
+    )
     approval = store.consume(pending.approval_id, decision="approve_task", owner="me", session_id="s1")
 
-    desc, result = asyncio.run(
-        tool_execution.execute_tool_block(
-            ToolBlock("bash", "git push"),
-            session_id="s1",
-            owner="me",
-            security_context=ToolRunSecurityContext(),
-            exact_approval=approval,
+    def run(exact):
+        return asyncio.run(
+            tool_execution.execute_tool_block(
+                ToolBlock("bash", "git push"),
+                session_id="s1",
+                owner="me",
+                workspace=str(tmp_path),
+                request_authority=authority,
+                security_context=ToolRunSecurityContext(),
+                exact_approval=exact,
+            )
         )
-    )
+
+    desc, result = run(approval)
     assert result.get("exit_code") == 0, result
     assert ran == ["git push"]
 
     # The next identical action is checked again.
-    desc, result = asyncio.run(
-        tool_execution.execute_tool_block(
-            ToolBlock("bash", "git push"),
-            session_id="s1",
-            owner="me",
-            security_context=ToolRunSecurityContext(),
-        )
-    )
+    desc, result = run(None)
     assert result["blocked"] is True
     assert ran == ["git push"]
 
@@ -299,7 +315,7 @@ def test_agent_loop_turns_policy_verdicts_into_cards_and_blocks(auto_mode, monke
             async for chunk in agent_loop.stream_agent_loop(
                 "http://local.test/v1",
                 "small-local-model",
-                [{"role": "user", "content": "push my work"}],
+                [{"role": "user", "content": "Run git status in the shell, then git push my work."}],
                 max_rounds=3,
                 relevant_tools={"bash"},
             )
