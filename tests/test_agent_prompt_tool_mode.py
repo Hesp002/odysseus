@@ -13,7 +13,7 @@ import json
 import src.agent_loop as al
 
 
-_COMPACT_MARKER = "native tool/function calling"
+_COMPACT_MARKER = "tool syntax in chat"
 
 
 def _system_prompt_for(monkeypatch, endpoint_url, model):

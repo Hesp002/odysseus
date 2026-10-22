@@ -782,7 +782,7 @@ def test_chat_stream_honors_retract_round_text():
     )
     segment = ast.get_source_segment(source, chat_stream_func)
     assert '"retract_round_text"' in segment
-    assert "full_response.endswith(_retract)" in segment
+    assert "_render_state.content.endswith(_retract)" in segment
 
 
 def test_persona_chats_are_chat_plus_memory_only():
