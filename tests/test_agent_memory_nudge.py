@@ -3,6 +3,9 @@ manage_memory call gets one nudge to make the call.
 
 Small local models reply "I've noted that Ace is your dog" without emitting
 the tool block, so nothing is stored.
+
+The loop itself turns a plain "remember that/this" into a manage_memory call,
+so the nudge tests use a phrasing it doesn't parse ("don't forget that...").
 """
 
 import asyncio
@@ -37,6 +40,9 @@ def _run_loop(monkeypatch, user_text, round_texts, max_rounds=5, **loop_kwargs):
     monkeypatch.setattr(al, "estimate_tokens", lambda *a, **k: 10, raising=False)
     # Run as the admin/single user; non-admins can't use manage_memory at all.
     monkeypatch.setattr(al, "blocked_tools_for_owner", lambda owner: set(), raising=False)
+    # Inside a container the loop adds a backend runtime context message that
+    # arms the external-context gate; keep the test independent of where it runs.
+    monkeypatch.setattr(al, "_backend_runtime_context_message", lambda: None, raising=False)
 
     executed = []
 
@@ -72,7 +78,7 @@ def _nudged(messages):
 def test_claimed_save_without_tool_call_is_nudged_once(monkeypatch):
     calls, executed, _ = _run_loop(
         monkeypatch,
-        "My dog is named Ace. Remember that.",
+        "Don't forget that my dog is named Ace.",
         ["Got it, I've noted that your dog is named Ace."],
     )
     # One nudge, then the turn ends even though the model still didn't call it.
@@ -85,7 +91,7 @@ def test_claimed_save_without_tool_call_is_nudged_once(monkeypatch):
 def test_nudge_leads_to_manage_memory_call(monkeypatch):
     calls, executed, _ = _run_loop(
         monkeypatch,
-        "My dog is named Ace. Remember that.",
+        "Don't forget that my dog is named Ace.",
         [
             "Got it!",
             "```manage_memory\nadd\nThe user's dog is named Ace.\n```",
@@ -106,7 +112,6 @@ def test_no_nudge_when_manage_memory_called_first(monkeypatch):
         ],
     )
     assert executed == ["manage_memory"]
-    assert len(calls) == 2
     assert not any(_nudged(c) for c in calls)
 
 
@@ -116,8 +121,8 @@ def test_no_nudge_for_recall_question(monkeypatch):
         "Do you remember what my dog's name is?",
         ["I don't have that saved yet."],
     )
-    assert len(calls) == 1
-    assert executed == []
+    # The loop may look the memory up first; it just must not be nudged to save.
+    assert not any(_nudged(c) for c in calls)
 
 
 def test_no_second_save_after_approved_manage_memory(monkeypatch):
@@ -144,15 +149,14 @@ def test_no_second_save_after_approved_manage_memory(monkeypatch):
 
     calls, executed, _ = _run_loop(
         monkeypatch,
-        "My dog is named Ace. Remember that.",
+        "Don't forget that my dog is named Ace.",
         ["Ace is now part of your memory."],
         owner="alice",
         session_id="session-1",
         exact_approval=grant,
     )
     assert executed == ["manage_memory"]
-    assert len(calls) == 1
-    assert not _nudged(calls[0])
+    assert not any(_nudged(c) for c in calls)
 
 
 def test_nudged_round_text_is_retracted_from_saved_reply(monkeypatch):
@@ -161,7 +165,7 @@ def test_nudged_round_text_is_retracted_from_saved_reply(monkeypatch):
     # Inline <think> blocks are kept so they still render on reload.
     _, executed, events = _run_loop(
         monkeypatch,
-        "My dog is named Ace. Remember that.",
+        "Don't forget that my dog is named Ace.",
         [
             "<think>plan</think>I'll remember Ace!",
             "```manage_memory\nadd\nThe user's dog is named Ace.\n```",

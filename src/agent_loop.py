@@ -4262,7 +4262,13 @@ def _backend_runtime_context_message() -> Optional[Dict[str, Any]]:
         f"backend_capabilities={', '.join(capabilities)}",
         "For local/LAN/network diagnostics, use available shell tools from the agent runtime. Do not hand the user a command list to run themselves.",
     ])
-    return untrusted_context_message("backend runtime context", text)
+    # Present on every turn in a container; with the command policy on it must
+    # not arm the gate, or every write becomes an approval card.
+    return untrusted_context_message(
+        "backend runtime context",
+        text,
+        arm_tool_gate=not command_policy_active(),
+    )
 
 
 def _workspace_agents_context_message(workspace: Optional[str]) -> Optional[Dict[str, Any]]:
