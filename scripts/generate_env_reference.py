@@ -492,6 +492,13 @@ VARIABLE_NOTES: dict[str, tuple[str, str, str]] = {
         "tools that execute code, mutate state or cause external side effects need "
         "a separate approval. Set to 0 to opt out.",
     ),
+    "ODYSSEUS_TOOL_APPROVAL_MODE": (
+        "Agent loop and tool execution", USER,
+        "Per-action command policy for code-running and file-writing tools: "
+        "off (default), auto (routine work runs, risky actions ask, a few are "
+        "blocked) or ask (every write or command except plainly read-only ones "
+        "asks; the block list still applies).",
+    ),
     "ODYSSEUS_MCP_ALLOWED_COMMANDS": (
         "Agent loop and tool execution", USER,
         "Security-relevant. Comma-separated allowlist of MCP launcher basenames the "

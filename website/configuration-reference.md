@@ -21,7 +21,7 @@ described as a switch that turns something off, the read rejects `0`, `false`,
 `no` and `off` and treats everything else as on. The `Default` column is the
 value the code falls back to when the variable is unset, quoted from the source.
 
-The source tree reads **117** `ODYSSEUS_*` variables: 81 an operator may want to set, and 36 that are internal - sentinels, fixture switches, capture hooks and development tooling. The internal ones are listed too, in their own section, so this page can be checked against the source mechanically.
+The source tree reads **118** `ODYSSEUS_*` variables: 82 an operator may want to set, and 36 that are internal - sentinels, fixture switches, capture hooks and development tooling. The internal ones are listed too, in their own section, so this page can be checked against the source mechanically.
 
 > This page is generated. Edit `scripts/generate_env_reference.py` and
 > re-run it; `tests/test_env_reference.py` enforces that the committed page
@@ -78,6 +78,7 @@ The source tree reads **117** `ODYSSEUS_*` variables: 81 an operator may want to
 | `ODYSSEUS_PYTHON_TOOL_SITE_PACKAGES` | `''` | `src/agent_runtime/process_resources.py` (+1 more) | Security-relevant. Absolute package roots, separated by the platform path separator, exposed to the sandboxed Python tool. Empty exposes none. |
 | `ODYSSEUS_SCRIPT_HOST` | `'localhost'` | `src/builtin_actions.py` | Default host for the run-script action. `localhost`, `127.0.0.1`, `local` and empty run locally; any other value runs over SSH. |
 | `ODYSSEUS_TOOL_APPROVAL_GATE` | `'1'` | `src/tool_capabilities.py` | Security-relevant. On by default: after external content enters a run, tools that execute code, mutate state or cause external side effects need a separate approval. Set to 0 to opt out. |
+| `ODYSSEUS_TOOL_APPROVAL_MODE` | *unset* | `src/command_policy.py` | Per-action command policy for code-running and file-writing tools: off (default), auto (routine work runs, risky actions ask, a few are blocked) or ask (every write or command except plainly read-only ones asks; the block list still applies). |
 
 ### Browser automation
 
@@ -265,7 +266,7 @@ reads three ways, because no single pattern covers the codebase:
   lines, so one read lives inside a string literal.
 
 The three passes are not redundancy. A line-based grep for a direct
-`os.environ.get("ODYSSEUS_...` call finds 87 of the 117 variables on this
+`os.environ.get("ODYSSEUS_...` call finds 87 of the 118 variables on this
 page. What it misses is reads through an env-reader helper, reads whose call
 spans more than one line, reads whose variable name is held in a module
 constant, and reads through a mapping passed in as an argument - which is the

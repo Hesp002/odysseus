@@ -6,7 +6,7 @@
 // the default Odysseus. Clicking a persona starts a new chat with it. Backend:
 // routes/persona_routes.py, src/personas.py.
 
-import uiModule from './ui.js';
+import uiModule from './ui.js?v=20260916largetoolscroll1';
 import sessionModule from './sessions.js';
 
 const API_BASE = window.location.origin;
