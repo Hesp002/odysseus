@@ -34,7 +34,7 @@ def test_unknown_enable_value_is_a_normal_ask_user():
     _, result = _ask({"question": "Pick one", "enable": "email",
                       "options": [{"label": "A"}, {"label": "B"}]})
     assert "enable" not in result["ask_user"]
-    _, result = _ask({"question": "Pick one", "enable": "email"})
+    _, result = _ask({"enable": "email"})
     assert result["exit_code"] == 1
 
 
@@ -73,3 +73,46 @@ def test_unknown_turn_with_web_off_still_offers_ask_user():
     assert "ask_user" in contract.offered
     assert not set(contract.offered) & WEB_TOOL_NAMES
     assert not contract.unavailable
+
+
+def test_bare_question_gets_yes_no_options():
+    _, result = _ask({"question": "Enable web search by selecting 'Yes'?"})
+    assert [o["label"] for o in result["ask_user"]["options"]] == ["Yes", "No"]
+
+
+def test_web_off_marker_is_detected_only_from_the_note():
+    from src.agent_tools.interaction_tools import toggle_off_note, web_toggle_off
+
+    assert web_toggle_off([{"role": "system", "content": "Base prompt.\n" + toggle_off_note(["shell", "web"])}])
+    assert not web_toggle_off([{"role": "system", "content": toggle_off_note(["shell"])}])
+    assert not web_toggle_off([{"role": "user", "content": toggle_off_note(["web"])}])
+
+
+def test_backstop_turns_web_question_into_enable_card():
+    from src.agent_tools.interaction_tools import apply_web_off_backstop
+
+    card = apply_web_off_backstop({"question": "Enable web search to get the latest F1 winner?",
+                                   "options": [{"label": "Yes"}, {"label": "No"}]})
+    assert card["enable"] == "web"
+    assert card["options"][0]["label"] == "Yes, search the web"
+    assert card["options"][0]["value"] == "enable"
+
+
+def test_backstop_adds_search_option_to_clarifying_question():
+    from src.agent_tools.interaction_tools import apply_web_off_backstop
+
+    options = [{"label": str(i)} for i in range(6)]
+    card = apply_web_off_backstop({"question": "Is 'Omarchy' a typo?", "options": options})
+    assert len(card["options"]) == 6
+    assert card["options"][-1] == {"label": "Search the web instead",
+                                   "description": "Turns on Web search", "value": "enable"}
+    assert card["enable"] == "web"
+
+
+def test_backstop_leaves_enable_and_approval_cards_alone():
+    from src.agent_tools.interaction_tools import apply_web_off_backstop
+
+    shell = {"question": "q", "enable": "shell", "options": []}
+    approval = {"question": "q", "kind": "tool_approval", "options": [{"label": "Allow"}, {"label": "Deny"}]}
+    assert apply_web_off_backstop(shell) is shell
+    assert apply_web_off_backstop(approval) is approval

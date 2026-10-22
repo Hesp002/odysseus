@@ -3625,18 +3625,14 @@ def setup_chat_routes(
         if chat_mode == "agent" and not incognito and not image_generation_session:
             # Fork: tell the model which toggles are off and how to ask for
             # them; otherwise it narrates a search it cannot run.
+            from src.agent_tools.interaction_tools import toggle_off_note
             _off_notes = []
             if not _search_enabled:
-                _off_notes.append(("web", "Web search", "current or online information"))
+                _off_notes.append("web")
             if allow_bash is not None and str(allow_bash).lower() != "true":
-                _off_notes.append(("shell", "Shell access", "running a command on this computer"))
+                _off_notes.append("shell")
             if _off_notes:
-                toggle_off_context = {"role": "system", "content": "\n".join(
-                    f"{label} is turned OFF by the user. If answering needs {need}, "
-                    f"do not pretend to use it and do not guess: call ask_user with "
-                    f"enable=\"{kind}\" and a one-line question. The app shows Yes/No buttons."
-                    for kind, label, need in _off_notes
-                )}
+                toggle_off_context = {"role": "system", "content": toggle_off_note(_off_notes)}
                 ctx.messages.insert(0, toggle_off_context)
                 if foreground_policy.enabled:
                     getattr(ctx, 'route_messages', ctx.messages).insert(0, dict(toggle_off_context))

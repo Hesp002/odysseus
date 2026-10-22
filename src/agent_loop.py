@@ -34045,6 +34045,11 @@ async def stream_agent_loop(
                 # loop and re-ask after the user answers. Stream it as assistant
                 # text (once) so it persists and is replayed. The card shows the
                 # options only, so this is the single visible copy of the question.
+                from src.agent_tools.interaction_tools import (
+                    apply_web_off_backstop, web_toggle_off,
+                )
+                if web_toggle_off(messages):
+                    result["ask_user"] = apply_web_off_backstop(result["ask_user"])
                 _auq = result["ask_user"]
                 _auq_q = (_auq.get("question") or "").strip()
                 if _auq_q and _auq_q not in full_response:

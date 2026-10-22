@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,48 @@ ENABLE_OPTIONS = {
         {"label": "No, answer without it", "description": ""},
     ),
 }
+_SEARCH_INSTEAD = {"label": "Search the web instead", "description": "Turns on Web search", "value": "enable"}
+_TOGGLE_NEEDS = {
+    "web": ("Web search", "current or online information"),
+    "shell": ("Shell access", "running a command on this computer"),
+}
+_WEB_QUESTION_RE = re.compile(r"\b(?:web|search|online|internet|look\s+(?:it\s+)?up|browse)\b", re.I)
+
+
+def toggle_off_note(kinds):
+    """System note for agent turns where the user turned Web/Shell off."""
+    return "\n".join(
+        f"{_TOGGLE_NEEDS[k][0]} is turned OFF by the user. If answering needs {_TOGGLE_NEEDS[k][1]}, "
+        f"do not pretend to use it and do not guess: call ask_user with "
+        f"enable=\"{k}\" and a one-line question. The app shows Yes/No buttons."
+        for k in kinds
+    )
+
+
+def web_toggle_off(messages):
+    marker = toggle_off_note(["web"]).split(".", 1)[0]
+    return any(
+        isinstance(m, dict) and m.get("role") == "system" and marker in str(m.get("content") or "")
+        for m in messages or ()
+    )
+
+
+def apply_web_off_backstop(card):
+    """With Web off, any question card also offers to turn Web on.
+
+    Small models often ask a clarifying question ("is Omarchy a typo?") or
+    word a Yes/No in prose instead of passing enable="web". Don't rely on
+    them: a question about searching becomes the fixed enable card, and any
+    other question gains a "Search the web instead" option.
+    """
+    if card.get("enable") or card.get("kind") == "tool_approval":
+        return card
+    card = dict(card, enable="web", multi=False)
+    if _WEB_QUESTION_RE.search(str(card.get("question") or "")):
+        card["options"] = [dict(o) for o in ENABLE_OPTIONS["web"]]
+    else:
+        card["options"] = list(card.get("options") or [])[:5] + [dict(_SEARCH_INSTEAD)]
+    return card
 
 class AskUserTool:
     async def execute(self, content, ctx):
@@ -70,6 +113,11 @@ class AskUserTool:
             }
             logger.info("Tool executed: ask_user enable=%s", enable)
             return f"ask_user: enable {enable}", result
+
+        if question and not options:
+            # Fork: a bare question is almost always a yes/no one; show it
+            # rather than bouncing an error back to a small model.
+            options = [{"label": "Yes", "description": ""}, {"label": "No", "description": ""}]
 
         if not question or len(options) < 2:
             return "ask_user: invalid", {
