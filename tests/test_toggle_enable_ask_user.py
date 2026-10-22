@@ -116,3 +116,17 @@ def test_backstop_leaves_enable_and_approval_cards_alone():
     approval = {"question": "q", "kind": "tool_approval", "options": [{"label": "Allow"}, {"label": "Deny"}]}
     assert apply_web_off_backstop(shell) is shell
     assert apply_web_off_backstop(approval) is approval
+
+
+def test_unknown_turn_needs_the_search_grant_to_run_web_search():
+    # The contract offered web_search for "unknown", but the request
+    # authority (built from the same classifier) had no grant, so the call
+    # was denied at execution. chat_routes now passes search_browser.
+    from src.agent_runtime.authority import create_request_authority
+
+    message = "Check the price of the framework desktop."
+    assert requested_capabilities(message, []) == {"unknown"}
+    granted = lambda auth: {g.tool for g in auth.grants}
+    assert "web_search" not in granted(create_request_authority(message, owner="u"))
+    authority = create_request_authority(message, owner="u", capabilities={"search_browser"})
+    assert {"web_search", "web_fetch"} <= granted(authority)

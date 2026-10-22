@@ -3614,6 +3614,10 @@ def setup_chat_routes(
                                  for a in (ctx.preprocessed.attachment_meta or [])),
             capabilities=({'search_browser'} if (
                 _explicit_browser_intent or _external_discovery_intent
+                # Fork: matches the contract remap of an "unknown" turn
+                # below; without the grant the offered web_search is denied
+                # at execution.
+                or (_search_enabled and _turn_capabilities == frozenset({"unknown"}))
             ) else ()),
         )
         if exact_tool_approval is not None:
