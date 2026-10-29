@@ -14,8 +14,7 @@ Opt-in via environment (default off):
   ODYSSEUS_SEMANTIC_ROUTER_URL                   (default: OLLAMA_BASE_URL sans /v1)
   ODYSSEUS_SEMANTIC_ROUTER_THRESHOLD=0.9         (min calibrated probability)
   ODYSSEUS_SEMANTIC_ROUTER_TEMPERATURE=1.5       (fit with scripts/eval_semantic_route.py)
-  ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT=4            (model already loaded)
-  ODYSSEUS_SEMANTIC_ROUTER_COLD_TIMEOUT=30      (model must load first)
+  ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT=4
 """
 
 from __future__ import annotations
@@ -213,19 +212,18 @@ async def semantic_route(message: str, previous: str | None = None) -> RouteDeci
     model = router_model()
     if not model or not isinstance(message, str) or not message.strip():
         return None
-    # A cold model takes ~13 s to load, and a client that gives up first
-    # makes Ollama cancel the load. The reply needs the model anyway, so
-    # wait for the load instead of adding a timeout to the turn.
-    if await model_loaded(model):
-        timeout = _env_float("ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT", 4.0)
-    else:
-        timeout = _env_float("ODYSSEUS_SEMANTIC_ROUTER_COLD_TIMEOUT", 30.0)
-        logger.info("semantic router: %s not loaded, waiting up to %.0fs", model, timeout)
+    # A cold model takes 13-28 s to load. Waiting here holds /api/chat_stream
+    # before its stream starts, and the browser's 15 s stall watchdog then
+    # abandons the turn; giving up early makes Ollama cancel the load. So skip
+    # routing for this turn and let the reply load the model as usual.
+    if not await model_loaded(model):
+        logger.info("semantic router: %s not loaded; skipping this turn", model)
+        return None
     try:
         probs = await score_message(
             message, previous, model=model,
             temperature=_env_float("ODYSSEUS_SEMANTIC_ROUTER_TEMPERATURE", 1.5),
-            timeout=timeout,
+            timeout=_env_float("ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT", 4.0),
         )
     except Exception as exc:  # fail open: the lexical result stands
         # repr: httpx timeouts have an empty str().

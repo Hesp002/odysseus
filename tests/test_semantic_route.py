@@ -129,18 +129,21 @@ async def _route_with_load_state(monkeypatch, loaded):
 
     async def fake_score(*args, timeout, **kwargs):
         seen["timeout"] = timeout
-        return {"A": 1.0}
+        return {"B": 1.0}
 
     monkeypatch.setattr(sr, "model_loaded", fake_loaded)
     monkeypatch.setattr(sr, "score_message", fake_score)
-    await sr.semantic_route("hello")
-    return seen["timeout"]
+    decision = await sr.semantic_route("check the price of x")
+    return decision, seen
 
 
-async def test_warm_model_uses_short_timeout(monkeypatch):
-    assert await _route_with_load_state(monkeypatch, True) == 4.0
+async def test_warm_model_is_scored_with_short_timeout(monkeypatch):
+    decision, seen = await _route_with_load_state(monkeypatch, True)
+    assert decision.option.label == "web" and seen["timeout"] == 4.0
 
 
-async def test_cold_model_waits_for_the_load(monkeypatch):
-    # Giving up at 4 s made Ollama cancel the ~13 s load the reply needs.
-    assert await _route_with_load_state(monkeypatch, False) == 30.0
+async def test_cold_model_skips_routing_without_a_request(monkeypatch):
+    # Waiting for a 13-28 s load held chat_stream past the browser's 15 s
+    # stall watchdog; a short timeout made Ollama cancel the load.
+    decision, seen = await _route_with_load_state(monkeypatch, False)
+    assert decision is None and seen == {}

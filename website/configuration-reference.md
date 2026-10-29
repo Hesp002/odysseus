@@ -71,8 +71,7 @@ The source tree reads **118** `ODYSSEUS_*` variables: 82 an operator may want to
 | `ODYSSEUS_SEMANTIC_ROUTER_URL` | *unset* | `src/semantic_route.py` | Fork. Ollama base URL for the router. Unset uses `OLLAMA_BASE_URL` without its `/v1` suffix. |
 | `ODYSSEUS_SEMANTIC_ROUTER_THRESHOLD` | `0.9` | `src/semantic_route.py` | Fork. Minimum calibrated probability before a routed family is used; below it the lexical result stands. |
 | `ODYSSEUS_SEMANTIC_ROUTER_TEMPERATURE` | `1.5` | `src/semantic_route.py` | Fork. Temperature scaling for the router's probabilities. Refit with `scripts/eval_semantic_route.py` after changing the model or options. |
-| `ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT` | `4` | `src/semantic_route.py` | Fork. Seconds to wait for the router when its model is already loaded; on timeout or any error the turn proceeds unrouted. |
-| `ODYSSEUS_SEMANTIC_ROUTER_COLD_TIMEOUT` | `30` | `src/semantic_route.py` | Fork. Seconds to wait when Ollama must load the model first. Giving up sooner makes Ollama cancel the load the reply needs anyway. |
+| `ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT` | `4` | `src/semantic_route.py` | Fork. Seconds to wait for the router; on timeout or any error the turn proceeds unrouted. When the model isn't loaded the router is skipped for that turn. |
 
 ### Agent loop and tool execution
 
