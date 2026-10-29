@@ -14,7 +14,8 @@ Opt-in via environment (default off):
   ODYSSEUS_SEMANTIC_ROUTER_URL                   (default: OLLAMA_BASE_URL sans /v1)
   ODYSSEUS_SEMANTIC_ROUTER_THRESHOLD=0.9         (min calibrated probability)
   ODYSSEUS_SEMANTIC_ROUTER_TEMPERATURE=1.5       (fit with scripts/eval_semantic_route.py)
-  ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT=4
+  ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT=4            (model already loaded)
+  ODYSSEUS_SEMANTIC_ROUTER_COLD_TIMEOUT=30      (model must load first)
 """
 
 from __future__ import annotations
@@ -192,19 +193,41 @@ async def score_message(message: str, previous: str | None = None, *, model: str
     return letter_probabilities(first.get("top_logprobs") or [], temperature)
 
 
+async def model_loaded(model: str) -> bool:
+    """Whether Ollama has the model in memory; True when it can't tell."""
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(f"{_base_url()}/api/ps")
+            resp.raise_for_status()
+            running = resp.json().get("models") or []
+    except Exception:
+        return True
+    names = {model, model if ":" in model else f"{model}:latest"}
+    return any(m.get("name") in names or m.get("model") in names for m in running)
+
+
 async def semantic_route(message: str, previous: str | None = None) -> RouteDecision | None:
     """Classify an unplaced turn; None when disabled, empty or on any error."""
     model = router_model()
     if not model or not isinstance(message, str) or not message.strip():
         return None
+    # A cold model takes ~13 s to load, and a client that gives up first
+    # makes Ollama cancel the load. The reply needs the model anyway, so
+    # wait for the load instead of adding a timeout to the turn.
+    if await model_loaded(model):
+        timeout = _env_float("ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT", 4.0)
+    else:
+        timeout = _env_float("ODYSSEUS_SEMANTIC_ROUTER_COLD_TIMEOUT", 30.0)
+        logger.info("semantic router: %s not loaded, waiting up to %.0fs", model, timeout)
     try:
         probs = await score_message(
             message, previous, model=model,
             temperature=_env_float("ODYSSEUS_SEMANTIC_ROUTER_TEMPERATURE", 1.5),
-            timeout=_env_float("ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT", 4.0),
+            timeout=timeout,
         )
     except Exception as exc:  # fail open: the lexical result stands
-        logger.warning("semantic router failed: %s", exc)
+        # repr: httpx timeouts have an empty str().
+        logger.warning("semantic router failed: %r", exc)
         return None
     decision = decide(probs, _env_float("ODYSSEUS_SEMANTIC_ROUTER_THRESHOLD", 0.9))
     if decision is not None:

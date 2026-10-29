@@ -117,3 +117,30 @@ def test_routed_family_is_offered_and_granted_for_an_unplaced_turn():
     granted = {g.tool for g in create_request_authority(message, owner="u", capabilities=families).grants}
     assert {"list_emails", "search_emails"} <= granted
     assert "bash" not in granted
+
+
+async def _route_with_load_state(monkeypatch, loaded):
+    monkeypatch.setenv("ODYSSEUS_SEMANTIC_ROUTER", "1")
+    monkeypatch.setenv("ODYSSEUS_SEMANTIC_ROUTER_MODEL", "qwen3:30b-a3b")
+    seen = {}
+
+    async def fake_loaded(model):
+        return loaded
+
+    async def fake_score(*args, timeout, **kwargs):
+        seen["timeout"] = timeout
+        return {"A": 1.0}
+
+    monkeypatch.setattr(sr, "model_loaded", fake_loaded)
+    monkeypatch.setattr(sr, "score_message", fake_score)
+    await sr.semantic_route("hello")
+    return seen["timeout"]
+
+
+async def test_warm_model_uses_short_timeout(monkeypatch):
+    assert await _route_with_load_state(monkeypatch, True) == 4.0
+
+
+async def test_cold_model_waits_for_the_load(monkeypatch):
+    # Giving up at 4 s made Ollama cancel the ~13 s load the reply needs.
+    assert await _route_with_load_state(monkeypatch, False) == 30.0
