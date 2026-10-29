@@ -1,0 +1,50 @@
+[
+  {"text": "Check the price of the framework desktop", "label": "web", "note": "regex miss 2026-10-22: resolved to unknown"},
+  {"text": "who won the game last night", "label": "web"},
+  {"text": "is it going to rain tomorrow in Minneapolis", "label": "web"},
+  {"text": "how much is a Steam Deck OLED right now", "label": "web"},
+  {"text": "what's the latest version of Proxmox", "label": "web"},
+  {"text": "any news about the OpenMW 0.50 release?", "label": "web"},
+  {"text": "is Best Buy open on Sunday", "label": "web"},
+  {"text": "what did Nvidia stock close at today", "label": "web"},
+  {"text": "find me reviews of the Framework Desktop", "label": "web"},
+  {"text": "when does the next season of Severance come out", "label": "web"},
+
+  {"text": "My dog is named Ace, don't let that slip your mind", "label": "memory"},
+  {"text": "keep in mind that I'm allergic to shellfish", "label": "memory"},
+  {"text": "I moved to St. Paul last month, update what you know about me", "label": "memory"},
+  {"text": "please stop remembering where I work", "label": "memory"},
+  {"text": "note to self for you: my sister's birthday is March 3", "label": "memory"},
+
+  {"text": "did Linda reply to me yet", "label": "email", "note": "first prototype scored chat 0.87"},
+  {"text": "anything new in my inbox?", "label": "email"},
+  {"text": "write back to the landlord saying Tuesday works", "label": "email"},
+  {"text": "has Amazon sent the shipping confirmation", "label": "email"},
+  {"text": "find that message from Proton about my invoice", "label": "email"},
+
+  {"text": "am I free Thursday afternoon", "label": "calendar"},
+  {"text": "put dentist on the 14th at 9am", "label": "calendar"},
+  {"text": "what have I got going on this weekend", "label": "calendar"},
+  {"text": "move my Friday meeting to next week", "label": "calendar"},
+
+  {"text": "add milk and eggs to the grocery list", "label": "notes"},
+  {"text": "what's still on my to-do list", "label": "notes"},
+  {"text": "jot down that the wifi password is on the router", "label": "notes"},
+  {"text": "nudge me to call mom at 6", "label": "notes"},
+
+  {"text": "what do you think about werewolves?", "label": "chat"},
+  {"text": "explain how MoE models work", "label": "chat"},
+  {"text": "I'm feeling kind of down today", "label": "chat"},
+  {"text": "write me a short poem about autumn", "label": "chat"},
+  {"text": "what's the difference between a crocodile and an alligator", "label": "chat"},
+  {"text": "tell me a joke", "label": "chat"},
+  {"text": "how do I make a roux", "label": "chat"},
+  {"text": "do you remember when we talked about Morrowind?", "label": "chat", "note": "recall question stays in chat (action_intents)"},
+  {"text": "thanks, that helped a lot", "label": "chat"},
+  {"text": "which is better for a beginner, Python or Rust?", "label": "chat"},
+
+  {"text": "how full is my home folder", "label": "other"},
+  {"text": "switch the default model to gemma", "label": "other"},
+  {"text": "what's using all my CPU right now", "label": "other"},
+  {"text": "rename the screenshots in my Downloads folder by date", "label": "other"}
+]

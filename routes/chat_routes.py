@@ -75,6 +75,7 @@ from routes.chat_helpers import (
     _enforce_chat_privileges,
 )
 from src.action_intents import ToolIntent, classify_tool_intent as _classify_tool_intent
+from src.semantic_route import previous_user_message as _previous_user_message, semantic_route as _semantic_route
 from src.image_model_ids import looks_like_image_generation_model
 from src.tool_policy import (
     WEB_ACCESS_TOOL_NAMES,
@@ -2657,6 +2658,9 @@ def setup_chat_routes(
         # shell disabled).
         auto_escalated = False
         _tool_intent = _classify_tool_intent(message) if isinstance(message, str) else None
+        # Fork: semantic fallback result, computed at most once per turn.
+        _semantic_decision = None
+        _semantic_checked = False
         # The opt-in trained-tools route owns its complete conversation loop.
         # Do not make each follow-up earn Agent mode again through the legacy
         # lexical intent classifier: that recreated the same per-turn RAG gate
@@ -2983,6 +2987,28 @@ def setup_chat_routes(
                     _tool_intent.category,
                     _tool_intent.reason,
                 )
+            # Fork: semantic fallback (src/semantic_route.py) for a plain chat
+            # turn the lexical router left unplaced. Never overrides a
+            # lexical decision or an explanatory "how does X work" question.
+            if (
+                chat_mode == "chat"
+                and isinstance(message, str)
+                and (not _tool_intent or (not _tool_intent.needs_tools
+                                          and _tool_intent.reason != "explanatory feature question"))
+            ):
+                _semantic_decision = await _semantic_route(
+                    message, _previous_user_message(getattr(sess, "history", None)))
+                _semantic_checked = True
+                if _semantic_decision is not None and _semantic_decision.actionable:
+                    _tool_intent = ToolIntent(True, _semantic_decision.option.category,
+                                              _semantic_decision.describe())
+                    chat_mode = "agent"
+                    auto_escalated = True
+                    logger.info(
+                        "chat→agent auto-escalation: category=%s reason=%s",
+                        _tool_intent.category,
+                        _tool_intent.reason,
+                    )
             _contextual_browser_turn_followup = bool(
                 isinstance(message, str)
                 and _is_contextual_browser_followup(message, sess)
@@ -3296,6 +3322,26 @@ def setup_chat_routes(
             active_document=bool(active_doc), workspace=bool(workspace),
             image_attachment=any(str(a.get('mime') or '').startswith('image/') for a in (ctx.preprocessed.attachment_meta or [])),
         ) if _use_turn_contract else frozenset()
+        # Fork: the contract classifier found no family ("unknown" or
+        # nothing). Ask the semantic fallback once per turn; a confident
+        # family replaces the empty result and is granted below.
+        _semantic_capabilities = frozenset()
+        if (
+            _use_turn_contract
+            and isinstance(message, str)
+            and _turn_capabilities <= frozenset({"unknown"})
+            and not _explicit_browser_intent
+            and not _external_discovery_intent
+        ):
+            if not _semantic_checked:
+                _semantic_decision = await _semantic_route(
+                    message, _previous_user_message(_turn_history))
+                _semantic_checked = True
+            if _semantic_decision is not None and _semantic_decision.actionable:
+                _semantic_capabilities = _semantic_decision.option.families
+                _turn_capabilities = _semantic_capabilities
+                logger.info("turn contract: %s → %s", _semantic_decision.describe(),
+                            sorted(_turn_capabilities))
         if 'image_editing' in _turn_capabilities and ctx.preprocessed.attachment_meta:
             image_refs = ['odysseus://attachment/' + str(a['id']) for a in ctx.preprocessed.attachment_meta
                           if a.get('id') and str(a.get('mime') or '').startswith('image/')]
@@ -3612,13 +3658,16 @@ def setup_chat_routes(
             active_document=bool(active_doc),
             image_attachment=any(str(a.get('mime') or '').startswith('image/')
                                  for a in (ctx.preprocessed.attachment_meta or [])),
-            capabilities=({'search_browser'} if (
+            capabilities=(({'search_browser'} if (
                 _explicit_browser_intent or _external_discovery_intent
                 # Fork: matches the contract remap of an "unknown" turn
                 # below; without the grant the offered web_search is denied
                 # at execution.
                 or (_search_enabled and _turn_capabilities == frozenset({"unknown"}))
-            ) else ()),
+            ) else set())
+                # Fork: families chosen by the semantic fallback (never
+                # shell); without the grant their tools fail at execution.
+                | set(_semantic_capabilities)),
         )
         if exact_tool_approval is not None:
             from src.agent_runtime.authority import RequestAuthority

@@ -66,6 +66,12 @@ The source tree reads **118** `ODYSSEUS_*` variables: 82 an operator may want to
 | `ODYSSEUS_MISTRAL_REASONING_EFFORT` | `'high'` | `src/llm_core.py` | Reasoning effort sent to Mistral thinking-capable models. The API accepts high, medium, low and none. |
 | `ODYSSEUS_MLX_IMAGE_VLM_MODEL` | *unset* | `scripts/mlx_image_server.py` | Vision-language model id for the MLX image server script. Required unless `--vlm-model` is passed on the command line. |
 | `ODYSSEUS_QWEN_ROUTE_THINKING` | `'auto'` | `src/agent_loop.py` | Thinking policy for the Qwen routing step. An unrecognized value falls back to `auto`. |
+| `ODYSSEUS_SEMANTIC_ROUTER` | *unset* | `src/semantic_route.py` | Fork. Set 1, true, yes or on to let a local Ollama model place turns the lexical router leaves unplaced (chat, web, memory, email, calendar, notes; never shell). Off by default. |
+| `ODYSSEUS_SEMANTIC_ROUTER_MODEL` | *unset* | `src/semantic_route.py` | Fork. Ollama model for the semantic router; ChatML/Qwen models only, others keep the router off. Required when the router is on. |
+| `ODYSSEUS_SEMANTIC_ROUTER_URL` | *unset* | `src/semantic_route.py` | Fork. Ollama base URL for the router. Unset uses `OLLAMA_BASE_URL` without its `/v1` suffix. |
+| `ODYSSEUS_SEMANTIC_ROUTER_THRESHOLD` | `0.9` | `src/semantic_route.py` | Fork. Minimum calibrated probability before a routed family is used; below it the lexical result stands. |
+| `ODYSSEUS_SEMANTIC_ROUTER_TEMPERATURE` | `1.5` | `src/semantic_route.py` | Fork. Temperature scaling for the router's probabilities. Refit with `scripts/eval_semantic_route.py` after changing the model or options. |
+| `ODYSSEUS_SEMANTIC_ROUTER_TIMEOUT` | `4` | `src/semantic_route.py` | Fork. Seconds to wait for the router; on timeout or any error the turn proceeds unrouted. |
 
 ### Agent loop and tool execution
 
