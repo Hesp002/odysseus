@@ -49,7 +49,8 @@ export const UI_VIS_MAP = {
 
 // Keys hidden by default on first run (no localStorage yet).
 // persona-section is a fork-local feature (static/js/personas.js), off until enabled.
-export const UI_VIS_DEFAULT_OFF = new Set(['rag-toggle-btn', 'text-emojis', 'chat-fullwidth', 'persona-section']);
+// raw-requests (fork) captures model request bodies in server memory while on.
+export const UI_VIS_DEFAULT_OFF = new Set(['rag-toggle-btn', 'text-emojis', 'chat-fullwidth', 'persona-section', 'raw-requests']);
 
 /**
  * Resolve every UI_VIS_MAP selector to visible (true) or hidden (false) for the

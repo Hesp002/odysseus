@@ -953,6 +953,24 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
             logger.error(f"Context usage error {session_id}: {e}")
             raise HTTPException(500, str(e))
 
+    @router.get("/api/session/{session_id}/raw-requests")
+    async def get_session_raw_requests(request: Request, session_id: str) -> Dict[str, Any]:
+        """Fork: model request bodies captured for this session (newest first).
+
+        In-memory only; empty unless the "Raw requests" toggle was on.
+        """
+        _verify_session_owner(request, session_id)
+        from src.request_capture import MAX_RECORDS, records_for
+        return {"session_id": session_id, "max_records": MAX_RECORDS,
+                "requests": records_for(session_id)}
+
+    @router.delete("/api/session/{session_id}/raw-requests")
+    async def clear_session_raw_requests(request: Request, session_id: str) -> Dict[str, Any]:
+        _verify_session_owner(request, session_id)
+        from src.request_capture import clear
+        clear(session_id)
+        return {"ok": True}
+
     @router.post("/api/session/{session_id}/memory-extraction")
     async def set_session_memory_extraction(request: Request, session_id: str) -> Dict[str, Any]:
         """Toggle automatic memory extraction for one chat session."""

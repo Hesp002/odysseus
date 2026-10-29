@@ -2486,6 +2486,11 @@ def setup_chat_routes(
         form_data = await request.form()
         message = form_data.get("message")
         session = form_data.get("session")
+        if str(form_data.get("capture_requests") or "").lower() == "true" and session:
+            # Fork: Appearance → "Raw requests" toggle. Records this turn's
+            # outgoing model request bodies in memory (src/request_capture.py).
+            from src.request_capture import begin_turn as _begin_request_capture
+            _begin_request_capture(session)
         selected_note_ids = _parse_selected_note_ids(form_data.get("selected_note_ids"))
 
         attachments = form_data.get("attachments")

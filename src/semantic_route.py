@@ -185,6 +185,8 @@ async def score_message(message: str, previous: str | None = None, *, model: str
         "top_logprobs": 20,
         "options": {"num_predict": 1, "temperature": 0},
     }
+    from src.request_capture import record as _capture_request
+    _capture_request(f"{_base_url()}/api/generate", body, source="semantic router")
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(f"{_base_url()}/api/generate", json=body)
         resp.raise_for_status()

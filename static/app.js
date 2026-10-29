@@ -10,7 +10,7 @@ import modelsModule from './js/models.js';
 import ragModule from './js/rag.js';
 import presetsModule from './js/presets.js?v=20260908personaname1';
 import searchModule from './js/search.js';
-import chatModule from './js/chat.js?v=20260917toolttft1';
+import chatModule from './js/chat.js?v=20261029rawreq1';
 import compareModule from './js/compare/index.js?v=20260909mobilepaneaddscroll1';
 import documentModule from './js/document.js?v=20260916docctx2';
 import searchChatModule from './js/search-chat.js';
@@ -33,7 +33,7 @@ import memoryModule from './js/memory.js';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js?v=20260910promptcopy1';
-import { UI_VIS_DEFAULT_OFF, resolveVisibility } from './js/ui_visibility.js?v=20260829chatstyle12';
+import { UI_VIS_DEFAULT_OFF, resolveVisibility } from './js/ui_visibility.js?v=20261029rawreq1';
 import tasksModule from './js/tasks.js?v=20260914taskmodel1';
 import calendarModule from './js/calendar.js?v=20260914emailsource11';
 import notesModule from './js/notes.js?v=20260911notesselectioncancel1';
@@ -2825,6 +2825,8 @@ function initializeEventListeners() {
     document.body.classList.toggle('hide-thinking', state['show-thinking'] === false);
     // Fullwidth chat toggle (chat-fullwidth: checked=fullwidth, unchecked=big-padding
     document.body.classList.toggle('fullwidth-chat', state['chat-fullwidth'] === true);
+    // Fork: raw request capture + viewer (static/js/raw_requests.js)
+    document.body.classList.toggle('raw-requests', state['raw-requests'] === true);
   }
 
   // Rearrange toggles in session/model sort dropdowns

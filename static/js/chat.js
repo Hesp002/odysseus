@@ -6,6 +6,7 @@
 // ES6 module — IIFE removed
 
 import Storage from './storage.js';
+import { openRawRequestsViewer } from './raw_requests.js?v=20261029rawreq1';
 import uiModule from './ui.js?v=20260916largetoolscroll1';
 import sessionModule from './sessions.js';
 import chatRenderer, { renderToolIcon } from './chatRenderer.js?v=20261022enabletoggle1';
@@ -669,6 +670,20 @@ import { invalidateSettings } from './appConfig.js';
         }
       });
       popup.appendChild(compactBtn);
+    }
+
+    if (document.body.classList.contains('raw-requests') && d.session_id) {
+      const rawBtn = document.createElement('button');
+      rawBtn.type = 'button';
+      rawBtn.className = 'chat-context-compact-btn';
+      rawBtn.textContent = 'Raw requests';
+      rawBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        _closeContextHeaderPopup();
+        openRawRequestsViewer(d.session_id, API_BASE);
+      });
+      popup.appendChild(rawBtn);
     }
 
     pill.classList.add('open');
@@ -2660,6 +2675,9 @@ import { invalidateSettings } from './appConfig.js';
 	        fd.set('plan_mode', 'false');
 	      }
       fd.append('allow_bash', el('bash-toggle').checked ? 'true' : 'false');
+      // Fork: Appearance → Raw requests. Server records this turn's model
+      // request bodies in memory for the viewer in the context popup.
+      if (document.body.classList.contains('raw-requests')) fd.append('capture_requests', 'true');
       const ragChk = el('rag-toggle');
       if (ragChk && !ragChk.checked) {
         fd.append('use_rag', 'false');

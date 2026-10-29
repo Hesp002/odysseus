@@ -1471,3 +1471,48 @@ body.settings-sidebar-resize-active {
 /* The persona chip row (memory.js) adds a line to the Brain toolbar; lift its
    120px cap so the category chips don't spill over the first memory. */
 #memory-modal .memory-toolbar:has(#memory-persona-filters:not(:empty)) { max-height: 160px; }
+
+/* Fork: raw request viewer (static/js/raw_requests.js) */
+.rawreq-overlay {
+  position: fixed; inset: 0; z-index: 10080;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, #000 45%, transparent);
+  padding: 16px;
+}
+.rawreq-modal {
+  display: flex; flex-direction: column;
+  width: min(980px, 100%); max-height: min(88vh, 100%);
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 18px 48px color-mix(in srgb, #000 35%, transparent);
+  font-size: 12px; overflow: hidden;
+}
+.rawreq-bar { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.rawreq-title { font-weight: 600; font-size: 13px; }
+.rawreq-spacer { flex: 1; }
+.rawreq-btn {
+  padding: 3px 9px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--fg); font-size: 11px; cursor: pointer;
+}
+.rawreq-btn:hover { border-color: var(--color-accent, var(--fg)); }
+.rawreq-note { padding: 6px 12px 0; }
+.rawreq-list { overflow: auto; padding: 8px 12px 12px; }
+.rawreq-empty { padding: 18px 4px; color: var(--color-muted); }
+.rawreq-turn { margin-bottom: 14px; }
+.rawreq-turn-title { font-weight: 600; margin: 6px 0; }
+.rawreq-card { border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; margin-bottom: 8px; background: var(--bg); }
+.rawreq-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.rawreq-card-head .rawreq-meta { flex: 1; }
+.rawreq-source { font-weight: 600; }
+.rawreq-meta { color: var(--color-muted); font-size: 11px; }
+.rawreq-section { margin: 2px 0 2px 4px; }
+.rawreq-section > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+.rawreq-section-title { font-family: ui-monospace, monospace; }
+.rawreq-messages { margin-left: 8px; }
+.rawreq-toolnames { margin: 2px 0 4px; }
+.rawreq-pre {
+  margin: 4px 0 6px; padding: 8px; max-height: 420px; overflow: auto;
+  white-space: pre-wrap; word-break: break-word;
+  background: var(--hl-bg, var(--panel)); color: var(--hl-fg, var(--fg));
+  border-radius: 6px; font-size: 11px; line-height: 1.4;
+}

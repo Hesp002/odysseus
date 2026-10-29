@@ -615,8 +615,11 @@ def _get_http_client() -> httpx.AsyncClient:
     global _http_client
     if _http_client is None or _http_client.is_closed:
         from src.tls_overrides import llm_verify
+        from src.request_capture import httpx_request_hook
         _http_client = httpx.AsyncClient(
             limits=_http_limits, http2=False, verify=llm_verify(),
+            # Fork: opt-in raw request capture (no-op unless the turn asked).
+            event_hooks={"request": [httpx_request_hook]},
         )
     return _http_client
 
@@ -1078,6 +1081,9 @@ def httpx_get_kimi_aware(url: str, headers: Optional[Dict], **kwargs):
 
 
 def httpx_post_kimi_aware(url: str, headers: Optional[Dict], **kwargs):
+    # Fork: the sync path bypasses the shared client's capture hook.
+    from src.request_capture import record as _capture_request
+    _capture_request(url, kwargs.get("json", kwargs.get("content")), source="llm_core sync")
     h = apply_kimi_code_headers(headers, url)
     if not _is_kimi_code_url(url):
         return httpx.post(url, headers=h, **kwargs)
