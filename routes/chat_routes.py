@@ -3667,8 +3667,10 @@ def setup_chat_routes(
                 _explicit_browser_intent or _external_discovery_intent
                 # Fork: matches the contract remap of an "unknown" turn
                 # below; without the grant the offered web_search is denied
-                # at execution.
-                or (_search_enabled and _turn_capabilities == frozenset({"unknown"}))
+                # at execution. An empty result ("How old was X when he
+                # died?") needs it too: the semantic fallback skips the turn
+                # when its model is cold, and web tools are still offered.
+                or (_search_enabled and _turn_capabilities <= frozenset({"unknown"}))
             ) else set())
                 # Fork: families chosen by the semantic fallback (never
                 # shell); without the grant their tools fail at execution.

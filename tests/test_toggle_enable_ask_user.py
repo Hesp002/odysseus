@@ -130,3 +130,18 @@ def test_unknown_turn_needs_the_search_grant_to_run_web_search():
     assert "web_search" not in granted(create_request_authority(message, owner="u"))
     authority = create_request_authority(message, owner="u", capabilities={"search_browser"})
     assert {"web_search", "web_fetch"} <= granted(authority)
+
+
+def test_unclassified_turn_needs_the_search_grant_to_run_web_search():
+    # No family at all (not even "unknown"), and the semantic fallback skips
+    # the turn when its model is cold. With Web on, chat_routes grants
+    # search_browser for any result <= {"unknown"}, or every search the
+    # model makes is "outside server request authority".
+    from src.agent_runtime.authority import create_request_authority
+
+    message = "How old was Patrick Stewart when he died, and what was the cause?"
+    assert requested_capabilities(message, []) <= frozenset({"unknown"})
+    granted = lambda auth: {g.tool for g in auth.grants}
+    assert "web_search" not in granted(create_request_authority(message, owner="u"))
+    authority = create_request_authority(message, owner="u", capabilities={"search_browser"})
+    assert {"web_search", "web_fetch"} <= granted(authority)
