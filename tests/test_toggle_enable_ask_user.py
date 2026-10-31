@@ -145,3 +145,40 @@ def test_unclassified_turn_needs_the_search_grant_to_run_web_search():
     assert "web_search" not in granted(create_request_authority(message, owner="u"))
     authority = create_request_authority(message, owner="u", capabilities={"search_browser"})
     assert {"web_search", "web_fetch"} <= granted(authority)
+
+
+def _web_turn_history(exit_code=0):
+    question = "How old was Patrick Stewart when he died, and what was the cause?"
+    return [
+        {"role": "user", "content": question},
+        {"role": "assistant", "content": "Patrick Stewart died on October 29, 2026, at 86.",
+         "metadata": {"tool_events": [{"tool": "web_search", "command": "Patrick Stewart death",
+                                       "output": "[1] ...", "exit_code": exit_code}]}},
+    ]
+
+
+def test_web_followup_inherits_web_but_needs_the_search_grant():
+    # The contract inherits web from the previous turn's tool events, but
+    # admission only inherits from user text, so the offered web_search was
+    # denied. chat_routes grants search_browser when Web is on and
+    # immediately_established_family is search_browser.
+    from src.agent_runtime.authority import create_request_authority
+    from src.turn_contract import immediately_established_family
+
+    message = "Are you sure he died on the 29th?"
+    history = _web_turn_history()
+    assert requested_capabilities(message, history) == {"search_browser"}
+    assert immediately_established_family(message, history) == "search_browser"
+    granted = lambda auth: {g.tool for g in auth.grants}
+    assert "web_search" not in granted(create_request_authority(message, owner="u", history=history))
+    authority = create_request_authority(message, owner="u", history=history,
+                                         capabilities={"search_browser"})
+    assert {"web_search", "web_fetch"} <= granted(authority)
+
+
+def test_failed_web_turn_establishes_no_family_to_grant():
+    from src.turn_contract import immediately_established_family
+
+    message = "Are you sure he died on the 29th?"
+    assert immediately_established_family(message, _web_turn_history(exit_code=1)) is None
+    assert immediately_established_family(message, []) is None

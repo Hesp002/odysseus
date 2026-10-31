@@ -98,8 +98,8 @@ from src.tool_execution import AgentExecutionBridge, bind_execution_bridge
 from src.agent_runtime.authority import is_internal_tool_request, request_authority_for_http
 from src.agent_runtime.runtime_selection import uses_compact_preview_runtime
 from src.turn_contract import (
-    FAMILY_TOOLS, bind_turn_contract, preserve_bound_editor_selected_tools,
-    requested_capabilities, resolve_turn_contract,
+    FAMILY_TOOLS, bind_turn_contract, immediately_established_family,
+    preserve_bound_editor_selected_tools, requested_capabilities, resolve_turn_contract,
     requests_independent_web_source, requires_external_web_verification,
     selected_tools_for_request,
 )
@@ -3671,6 +3671,14 @@ def setup_chat_routes(
                 # died?") needs it too: the semantic fallback skips the turn
                 # when its model is cold, and web tools are still offered.
                 or (_search_enabled and _turn_capabilities <= frozenset({"unknown"}))
+                # Fork: a follow-up ("Are you sure he died on the 29th?")
+                # inherits web from the previous turn's successful web tools,
+                # but admission only inherits from user text, so the offered
+                # search was denied. Grant only that same, already-exercised
+                # family, and only with Web on.
+                or (_search_enabled and "search_browser" in _turn_capabilities
+                    and isinstance(message, str)
+                    and immediately_established_family(message, _turn_history) == "search_browser")
             ) else set())
                 # Fork: families chosen by the semantic fallback (never
                 # shell); without the grant their tools fail at execution.
