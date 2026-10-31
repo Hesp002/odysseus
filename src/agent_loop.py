@@ -9038,6 +9038,19 @@ def _is_host_bridge_failure_result(result: object) -> bool:
     )
 
 
+def _approved_fetch_failure_continues(tool_name: str, result: object) -> bool:
+    """Fork: an approved web_fetch that ran but the site refused (HTTP 403,
+    404, timeout) is an ordinary tool result, not a rejected action.
+
+    Ending the turn there left the user with only the error, though the
+    model already had search results to answer from. Dispatch rejections
+    (``blocked`` / ``approval_required``) still end the turn.
+    """
+    if tool_name != "web_fetch" or not isinstance(result, dict):
+        return False
+    return not (result.get("blocked") or result.get("approval_required"))
+
+
 _INCOMPLETE_HEREDOC_RE = re.compile(
     r"here-document\s+at\s+line\s+\d+\s+delimited\s+by\s+end-of-file"
     r"\s*\(wanted\s+[`'\"]?[^\n)]+",
@@ -25574,7 +25587,7 @@ async def stream_agent_loop(
             or approved_result.get("blocked")
             or approved_result.get("approval_required")
             or approved_result.get("exit_code") not in (None, 0)
-        ):
+        ) and not _approved_fetch_failure_continues(approved.tool_name, approved_result):
             # An approval continuation is a sealed action, not a fresh agent
             # turn. If dispatch rejects that exact action (for example because
             # the tool was disabled between proposal and approval), report the
