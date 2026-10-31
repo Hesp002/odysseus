@@ -57,6 +57,16 @@ def supports_user_thinking_toggle(value: object) -> bool:
     return any(pattern in leaf for pattern in (
         "kimi-k2.5", "kimi-k2.6", "kimi-k3",
         "qwen3", "qwq", "deepseek-r1", "deepseek-reasoner",
+        # Fork: hosted reasoning models (e.g. Tinfoil's deepseek-v4-1-flash,
+        # glm-5-3). Without the switch their chats were forced "off", which
+        # dropped the thinking stream from the UI and the saved reply.
+        "deepseek-v4", "glm-",
         "minimax", "m2-reap", "gemma", "stepfun", "step-3", "step3",
         "magistral", "mistral-small", "mistral-medium",
     ))
+
+
+def default_thinking_mode(value: object) -> str:
+    """Fork: a new chat starts with thinking on when its model has the switch,
+    so the reasoning is shown live and saved with the reply."""
+    return "on" if supports_user_thinking_toggle(value) else "off"

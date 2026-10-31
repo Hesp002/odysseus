@@ -1277,6 +1277,32 @@ def _apply_local_qwen_thinking_mode(
     kwargs["enable_thinking"] = mode == "on"
 
 
+def _apply_tinfoil_thinking_mode(
+    payload: Dict,
+    url: str,
+    model: str,
+    thinking_mode: Optional[str],
+) -> None:
+    """Fork: Tinfoil's DeepSeek V4 thinks by default and is switched with
+    ``chat_template_kwargs.thinking`` (per its /v1/models reasoning_params).
+
+    Without this, "off" only hid the stream while the model still reasoned
+    and billed for it. GLM on Tinfoil has no off switch, so it is left alone.
+    Matched by host name: the local proxy service or inference.tinfoil.sh.
+    """
+    mode = _normalize_thinking_mode(thinking_mode)
+    if not mode or "deepseek-v4" not in str(model or "").lower():
+        return
+    host = (urlparse(str(url or "")).hostname or "").lower()
+    if "tinfoil" not in host:
+        return
+    kwargs = payload.setdefault("chat_template_kwargs", {})
+    if not isinstance(kwargs, dict):
+        kwargs = {}
+        payload["chat_template_kwargs"] = kwargs
+    kwargs["thinking"] = mode == "on"
+
+
 def _apply_hosted_thinking_mode(
     payload: Dict,
     provider: str,
@@ -2426,6 +2452,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
         _apply_local_generation_stability(payload, target_url, model)
         _apply_local_qwen_thinking_mode(payload, target_url, model, thinking_mode)
         _apply_hosted_thinking_mode(payload, provider, model, thinking_mode)
+        _apply_tinfoil_thinking_mode(payload, target_url, model, thinking_mode)
         _apply_deepseek_v4_reasoning_defaults(
             payload, target_url, model, thinking_mode
         )
@@ -2838,6 +2865,7 @@ async def llm_call_async(
         _apply_local_generation_stability(payload, target_url, model)
         _apply_local_qwen_thinking_mode(payload, target_url, model, thinking_mode)
         _apply_hosted_thinking_mode(payload, provider, model, thinking_mode)
+        _apply_tinfoil_thinking_mode(payload, target_url, model, thinking_mode)
         _apply_deepseek_v4_reasoning_defaults(
             payload, target_url, model, thinking_mode
         )
@@ -3111,6 +3139,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         _apply_local_generation_stability(payload, target_url, model)
         _apply_local_qwen_thinking_mode(payload, target_url, model, thinking_mode)
         _apply_hosted_thinking_mode(payload, provider, model, thinking_mode)
+        _apply_tinfoil_thinking_mode(payload, target_url, model, thinking_mode)
         _apply_deepseek_v4_reasoning_defaults(
             payload, target_url, model, thinking_mode
         )
